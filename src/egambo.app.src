@@ -1,0 +1,13 @@
+{application, egambo,
+ [
+  {description, "Bot programming platform for turn based games"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  dderl
+                 ]},
+  {mod, { egambo_app, []}},
+  {env, []}
+ ]}.
