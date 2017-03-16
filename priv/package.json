@@ -1,0 +1,14 @@
+{
+  "name": "egambo",
+  "version": "0.1.0",
+  "description": "Bot programming platform for turn based games",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/K2InformaticsGmbH/egambo.git"
+  },
+  "scripts": {
+    "build": "npm run clean && mkdir public && cp static/index.html public/",
+    "clean": "rm -rf public"
+  }
+}

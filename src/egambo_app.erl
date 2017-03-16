@@ -2,6 +2,8 @@
 
 -behaviour(application).
 
+-include("egambo.hrl").
+
 %% Application callbacks
 -export([start/2, stop/1]).
 
@@ -10,7 +12,17 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    egambo_sup:start_link().
+    ?Info("---------------------------------------------------"),
+    ?Info("STARTING EGAMBO"),
+    Routes = egambo:get_routes(),
+    ok = dderl:insert_routes(https, cowboy_router:compile([{'_', Routes}])),
+    case egambo_sup:start_link() of
+        {ok, SupRes} ->
+            ?Info("EGAMBO STARTED"),
+            ?Info("---------------------------------------------------"),
+            {ok, SupRes};
+        Other -> Other
+    end.
 
 stop(_State) ->
     ok.
