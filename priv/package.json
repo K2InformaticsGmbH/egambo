@@ -8,7 +8,10 @@
     "url": "https://github.com/K2InformaticsGmbH/egambo.git"
   },
   "scripts": {
-    "build": "npm run clean && mkdir public && cp static/index.html public/",
+    "build": "npm run clean && elm-make static/egambo.elm --output public/index.html",
     "clean": "rm -rf public"
+  },
+  "devDependencies": {
+    "elm": "^0.18.0"
   }
 }
