@@ -15,7 +15,8 @@ get_routes() ->
     %% TODO: Check why dderl is not that simple
     %% probably we need explicit trailing / support ?
     PublicDir = filename:join([priv_dir(), "public"]),
-    [{"/[...]", cowboy_static, {dir, PublicDir}}].
+    [{"/", cowboy_static, {file, PublicDir ++ "/index.html"}},
+     {"/[...]", cowboy_static, {dir, PublicDir}}].
 
 -spec priv_dir() -> list().
 priv_dir() -> priv_dir(?MODULE).
