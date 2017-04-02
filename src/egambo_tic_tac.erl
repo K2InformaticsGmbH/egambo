@@ -178,7 +178,7 @@ handle_info({play_bot, Player}, #state{width=Width, height=Height, run=Run, next
                     {stop, normal, NewState};
                 false ->
                     print_board(NewState),
-                    case is_tie(NewBoard, Width, Height, Run, Periodic, Player) of
+                    case is_tie(NewBoard, Width, Height, Run, Periodic, Player, Next) of
                         true ->
                             print_tie(),
                             {stop, normal, NewState};
@@ -222,7 +222,7 @@ handle_call({play, Player, Cell}, _From, #state{width=Width, height=Height, run=
                             {stop, normal, NewState};
                         false ->
                             print_board(NewState),
-                            case is_tie(NewBoard, Width, Height, Run, Periodic, Player) of
+                            case is_tie(NewBoard, Width, Height, Run, Periodic, Player, Next) of
                                 true ->
                                     print_tie(),
                                     {stop, normal, NewState};
@@ -332,8 +332,18 @@ print_row(N, State) ->
 row_str(N,#state{width=Width, board=Board}) ->
     [lists:nth(N, ?ROWS),$|] ++ binary_to_list(binary:part(Board, (N-1) * Width, Width)) ++ "|".
 
--spec is_tie(Board::binary(), Width::integer(), Height::integer(), Run::integer(), Periodic::boolean(), Player::integer()) -> boolean().
-is_tie(Board, _, _, _, _, _) ->  binary:match(Board, <<?AVAILABLE>>) =:= nomatch.
+-spec is_tie(Board::binary(), Width::integer(), Height::integer(), Run::integer(), Periodic::boolean(), Player::integer(), Next::integer()) -> boolean().
+is_tie(Board, Width, Height, Run, Periodic, Player, Next) ->  
+    case binary:match(Board, <<?AVAILABLE>>) of
+        nomatch -> 
+            true;
+        _ -> case is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Player:8>>, [global]), Width, Height, Run, Periodic, Player) of
+                true -> 
+                    false;
+                false ->
+                    not is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Next:8>>, [global]), Width, Height, Run, Periodic, Next)
+            end
+    end.
 
 is_win(Board, Width, Height, Run, false, Player) -> 
     egambo_tic_tac_win:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player);
