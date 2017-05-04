@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "npm run clean && elm-make static/egambo.elm --output public/index.html",
-    "clean": "rm -rf public"
+    "clean": "rm -rf public",
+    "repl" : "elm-repl"
   },
   "devDependencies": {
     "elm": "^0.18.0"
