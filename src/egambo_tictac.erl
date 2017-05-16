@@ -1,14 +1,24 @@
--module(egambo_tic_tac).
+-module(egambo_tictac).
 
--include("egambo.hrl").           % import logging macros
+-include("egambo.hrl").         % import logging macros
 
--behavior(gen_server).          % implicitly defines the required callbacks
+-behavior(gen_server).          % 
+-behavior(egambo_gen_game).     % implicitly defines the required callbacks
 
 -define(COLS, "abcdefgh").
 -define(ROWS, "12345678").
 -define(OBSTACLE, $$).
 -define(JOKER, $*).
--define(AVAILABLE,32).       % space
+-define(AVAILABLE, 32).         % space
+
+-type egTicTacParams() ::  #{ width =>integer()
+                            , height => integer()
+                            , run => integer()
+                            , starter => integer()
+                            , other => integer()
+                            , gravity => boolean()
+                            , periodic => boolean() 
+                            }.
 
 -record(state,
                 { width      :: integer()   % board width >= 3
@@ -16,7 +26,8 @@
                 , run        :: integer()   % sucess run length
                 , starter    :: integer()   % starting player (capital ascii)
                 , other      :: integer()   % other player (capital ascii)
-                , bot        :: integer()   % machine player Starter|Other|AVAIL = none
+                , starterBot :: atom()      % starter player bot module (or undefined) 
+                , otherBot   :: atom()      % other player bot module (or undefined) 
                 , gravity    :: boolean()   % do moves fall towards higher row numbers
                 , periodic   :: boolean()   % unbounded repeating board 
                 , board      :: binary()    % 
@@ -26,7 +37,7 @@
 
 % gen_server API call exports
 
--export([ start/10
+-export([ start/11
         , stop/0
         , play/1
         , play/2
@@ -55,7 +66,7 @@
         , code_change/3
         ]).
 
-start(Width, Height, Run, Obstacles, Jokers, Starter, Other, Bot, Gravity, Periodic) ->
+start(Width, Height, Run, Obstacles, Jokers, Starter, Other, StarterBot, OtherBot, Gravity, Periodic) ->
     Board0 = list_to_binary(lists:duplicate(Width*Height,?AVAILABLE)),
     {ok, Board1} = case {Gravity, is_list(Obstacles)} of
         {false,true} -> put_multi(Board0, cells_to_integer_list(Width, Height, Obstacles), ?OBSTACLE);
@@ -82,23 +93,24 @@ start(Width, Height, Run, Obstacles, Jokers, Starter, Other, Bot, Gravity, Perio
              , Run
              , player_to_integer(Starter)
              , player_to_integer(Other)
-             , player_to_integer(Bot)
+             , StarterBot
+             , OtherBot
              , Gravity
              , Periodic
              , Board4
              ],
-    ChildSpec = { egambo_tic_tac                          % ChildId
-                , {egambo_tic_tac,start_link,[Params]}    % {M,F,A}
+    ChildSpec = { egambo_tictac                          % ChildId
+                , {egambo_tictac,start_link,[Params]}    % {M,F,A}
                 , permanent                           % Restart strategy
                 , 1000                                % Shutdown timeout
                 , worker                              % Type
-                , [egambo_tic_tac]                        % Modules
+                , [egambo_tictac]                        % Modules
                 },
     supervisor:start_child(egambo_sup, ChildSpec).
 
 stop() ->
-    supervisor:terminate_child(egambo_sup, egambo_tic_tac),
-    supervisor:delete_child(egambo_sup, egambo_tic_tac).
+    supervisor:terminate_child(egambo_sup, egambo_tictac),
+    supervisor:delete_child(egambo_sup, egambo_tictac).
 
 start_link(Params)  ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Params, []).
@@ -137,28 +149,31 @@ cells_to_integer_list(_Width, _Height, [], Acc) -> lists:usort(Acc);
 cells_to_integer_list(Width, Height, [Cell|Rest], Acc) -> 
     cells_to_integer_list(Width, Height, Rest, [cell_to_integer(Cell, Width, Height)|Acc]).
 
-init([Width, Height, Run, Starter, Other, Bot, Gravity, Periodic, Board]) ->
+init([Width, Height, Run, Starter, Other, StarterBot, OtherBot, Gravity, Periodic, Board]) ->
     State = #state  { width=Width
                     , height=Height
                     , run=Run
                     , starter=Starter
                     , other=Other
-                    , bot=Bot
+                    , starterBot=StarterBot
+                    , otherBot=OtherBot
                     , gravity=Gravity
                     , periodic=Periodic
                     , board=Board 
                     , next=Starter
                     },
     print_board(State),
-    print_next(Starter, Bot),
-    invoke_bot_if_due(Starter, Bot),
+    print_next(Starter),
+    invoke_bot_if_due(Starter, Starter, StarterBot, Other, OtherBot),
     {ok, State}.
 
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 handle_cast(_Request, State) -> {noreply, State}.
 
-handle_info({play_bot, Player}, #state{width=Width, height=Height, run=Run, next=Player, starter=Starter, other=Other, bot=Bot, periodic=Periodic} = State) -> 
+handle_info({play_bot, Player}, #state{ width=Width, height=Height, run=Run, next=Player
+                                      , starter=Starter, other=Other, starterBot=StarterBot, otherBot=OtherBot
+                                      , periodic=Periodic} = State) -> 
     case play_bot(State) of
         {ok, NewBoard} ->   
             Next = next_player(Player, Starter, Other),
@@ -175,8 +190,8 @@ handle_info({play_bot, Player}, #state{width=Width, height=Height, run=Run, next
                             print_tie(),
                             {stop, normal, NewState};
                         false ->
-                            print_next(Next, Bot),
-                            invoke_bot_if_due(Next, Bot),    
+                            print_next(Next),
+                            invoke_bot_if_due(Next, Starter, StarterBot, Other, OtherBot),    
                             {noreply, NewState}
                     end
             end;
@@ -188,13 +203,15 @@ handle_info(_, State) -> {noreply, State}.
 handle_call(state, _From, State) ->
     ?Info("state ~p",[State]),
     {reply, ok, State};
-handle_call(print, _From, #state{next=Player, bot=Bot} = State) ->
+handle_call(print, _From, #state{next=Player} = State) ->
     print_board(State),
-    print_next(Player,Bot),
+    print_next(Player),
     {reply, ok, State};
 handle_call({play, Cell}, _From, #state{next=Player} = State) ->
     handle_call({play, Player, Cell}, _From, State);
-handle_call({play, Player, Cell}, _From, #state{width=Width, height=Height, run=Run, next=Player, starter=Starter, other=Other, bot=Bot, board=Board, gravity=Gravity, periodic=Periodic} = State) ->
+handle_call({play, Player, Cell}, _From, #state{ width=Width, height=Height, run=Run, next=Player
+                                               , starter=Starter, other=Other, starterBot=StarterBot, otherBot=OtherBot
+                                               , board=Board, gravity=Gravity, periodic=Periodic} = State) ->
     case cell_to_integer(Cell, Width, Height) of
         {error, invalid_cell} -> {reply, invalid_cell, State};
         Idx when is_integer(Idx) ->
@@ -219,8 +236,8 @@ handle_call({play, Player, Cell}, _From, #state{width=Width, height=Height, run=
                                     print_tie(),
                                     {stop, normal, NewState};
                                 false ->
-                                    print_next(Next, Bot),
-                                    invoke_bot_if_due(Next, Bot),    
+                                    print_next(Next),
+                                    invoke_bot_if_due(Next, Starter, StarterBot, Other, OtherBot),
                                     {reply, ok, NewState}
                             end
                     end
@@ -231,8 +248,9 @@ handle_call({play, _, _}, _From, State) ->
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-invoke_bot_if_due(Player, Player) -> self()!{play_bot,Player};
-invoke_bot_if_due(_, _) -> ok.
+invoke_bot_if_due(Next, Next, undefined, _, _) -> ok;
+invoke_bot_if_due(Next, _, _, Next, undefined) -> ok;
+invoke_bot_if_due(Next, _, _, _, _) -> self() ! {play_bot, Next}.
 
 -spec gravity_put(binary(), integer(), integer(), integer()) -> {ok,binary()} | {error,atom()}.
 gravity_put(Board, Width, Idx, NewVal) ->
@@ -297,11 +315,7 @@ next_player(Other,Starter,Other) -> Starter.
 
 random_idx(Width) -> crypto:rand_uniform(0, Width). % 0..Width-1
 
-print_next(Next, Bot) ->
-    case Next of
-        Bot ->  ?Info("next move ~s (bot)",[[Next]]);
-        _ ->    ?Info("next move ~s",[[Next]])
-    end.
+print_next(Next) -> ?Info("next move ~s",[[Next]]).
 
 print_tie() ->
     ?Info("This game ended in a tie."),
