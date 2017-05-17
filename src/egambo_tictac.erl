@@ -1,6 +1,7 @@
 -module(egambo_tictac).
 
--include("egambo.hrl").         % import logging macros
+% -include("egambo.hrl").         % import logging macros
+-include("egambo_game.hrl").    % import game managing structures 
 
 -behavior(gen_server).          % 
 -behavior(egambo_gen_game).     % implicitly defines the required callbacks
@@ -17,7 +18,9 @@
                             , starter => integer()
                             , other => integer()
                             , gravity => boolean()
-                            , periodic => boolean() 
+                            , periodic => boolean()
+                            , obstacles => [integer()] | integer()
+                            , jokers => [integer()] | integer()
                             }.
 
 -record(state,
@@ -35,26 +38,6 @@
                 }
        ).
 
-% gen_server API call exports
-
--export([ start/11
-        , stop/0
-        , play/1
-        , play/2
-        , state/0
-        , print/0
-        ]).
-
-% sample usage for demo:
-% plain tic-tac-toe
-% egambo_tic_tac:start(3,3,3,0,0,"X","O",undefined,false,false).
-% 4x4 tic-tac-toe against bot "O"
-% egambo_tic_tac:start(4,4,4,1,1,"X","O","O",false,false).
-% plain four wins
-% egambo_tic_tac:start(7,6,4,0,0,"X","O","O",false,false).
-% egambo_tic_tac:play(a1).
-% egambo_tic_tac:stop().
-
 % gen_server behavior callback exports
 
 -export([ start_link/1
@@ -65,6 +48,76 @@
         , terminate/2
         , code_change/3
         ]).
+
+% egambo_gen_game behavior callback exports
+-export([ preset/3
+        , play/4
+        , forfeit/3
+        , status/3
+        , stop/0
+        ]).
+
+% debugging API
+-export([ start/11
+        , play/1
+        , play/2
+        , state/0
+        , print/0
+        ]).
+
+% sample usage for demo:
+% plain tic-tac-toe
+% egambo_tictac:start(3,3,3,0,0,"X","O",undefined,false,false).
+% 4x4 tic-tac-toe against bot "O"
+% egambo_tictac:start(4,4,4,1,1,"X","O","O",false,false).
+% plain four wins
+% egambo_tictac:start(7,6,4,0,0,"X","O","O",false,false).
+% egambo_tictac:play(a1).
+% egambo_tictac:stop().
+
+preset(  #egGameType{ players=2
+                    , params=#{ width:=Width, height:=Height
+                              , starter:=Starter, other:=Other
+                              , gravity:=Gravity
+                              , obstacles:=Obstacles, jokers:=Jokers
+                              } 
+                    } % GameType
+       , #egGame{players=[P1,P2]} = Game
+       , _Opts ) ->
+    Board0 = list_to_binary(lists:duplicate(Width*Height,?AVAILABLE)),
+    {ok, Board1} = case {Gravity, is_list(Obstacles)} of
+        {false,true} -> put_multi(Board0, cells_to_integer_list(Width, Height, Obstacles), ?OBSTACLE);
+        {true,true} ->  gravity_put_multi(Board0, Width, cells_to_integer_list(Width, Height, Obstacles), ?OBSTACLE);
+        _ ->            {ok, Board0}
+    end, 
+    {ok, Board2} = case {Gravity, is_list(Jokers)} of
+        {false,true} -> put_multi(Board1, cells_to_integer_list(Width, Height, Jokers), ?JOKER);
+        {true,true} ->  gravity_put_multi(Board1, Width, cells_to_integer_list(Width, Height, Jokers), ?JOKER);
+        _ ->            {ok, Board1}
+    end,
+    {ok, Board3} = case {Gravity, is_integer(Obstacles)} of
+        {false,true} -> put_random(Board2, Obstacles, ?OBSTACLE);
+        {true,true} ->  gravity_put_random(Board2, Width, Obstacles, ?OBSTACLE);
+        _ ->            {ok, Board2}
+    end, 
+    {ok, B} = case {Gravity, is_integer(Jokers)} of
+        {false,true} -> put_random(Board3, Jokers, ?JOKER);
+        {true,true} ->  gravity_put_random(Board3, Width, Jokers, ?JOKER);
+        _ ->            {ok, Board3}
+    end,
+    A = [Starter,Other],        % initial aliases
+    S = [0,0],                  % initial scores
+    M = case random_idx1(2) of
+        1 -> [P1,P2];
+        2 -> [P2,P1]
+    end,                        % initial movers (player AccountIds)
+    Game#egGame{ialiases=A, imovers=M, preset=B, board=B, nmovers=M, naliases=A, nscores=S}. 
+
+play(_GameId, _Move, _Opts, _MyAccountId) -> ?egGameNotImplemented.
+
+forfeit(_GameId, _Opts, _MyAccountId) -> ?egGameNotImplemented.
+
+status(_GameId, _Opts, _MyAccountId) -> ?egGameNotImplemented.
 
 start(Width, Height, Run, Obstacles, Jokers, Starter, Other, StarterBot, OtherBot, Gravity, Periodic) ->
     Board0 = list_to_binary(lists:duplicate(Width*Height,?AVAILABLE)),
@@ -109,6 +162,7 @@ start(Width, Height, Run, Obstacles, Jokers, Starter, Other, StarterBot, OtherBo
     supervisor:start_child(egambo_sup, ChildSpec).
 
 stop() ->
+    % ToDo: save game state to the database
     supervisor:terminate_child(egambo_sup, egambo_tictac),
     supervisor:delete_child(egambo_sup, egambo_tictac).
 
@@ -276,7 +330,7 @@ gravity_put_multi(Board, Width, [Idx|Rest], NewVal) ->
 -spec gravity_put_random(binary(), integer(), integer(), integer()) -> {ok,binary()} | {error,atom()}.
 gravity_put_random(Board, _, 0, _) -> {ok, Board};
 gravity_put_random(Board, Width, Count, NewVal) ->
-    Idx = random_idx(Width),
+    Idx = random_idx0(Width),
     case gravity_put(Board, Width, Idx, NewVal) of 
         {error, already_occupied} -> gravity_put_random(Board, Width, Count, NewVal);
         {ok, Binary} ->              gravity_put_random(Binary, Width, Count-1, NewVal)
@@ -304,7 +358,7 @@ put_multi(Board, [Idx|Rest], NewVal) ->
 -spec put_random(binary(), integer(), integer()) -> {ok,binary()} | {error,atom()}.
 put_random(Board, 0, _) -> {ok, Board};
 put_random(Board, Count, NewVal) ->
-    Idx = random_idx(size(Board)),
+    Idx = random_idx0(size(Board)),
     case put(Board, Idx, NewVal) of 
         {error, already_occupied} -> put_random(Board, Count, NewVal);
         {ok, Binary} ->              put_random(Binary, Count-1, NewVal)
@@ -313,7 +367,9 @@ put_random(Board, Count, NewVal) ->
 next_player(Starter,Starter,Other) -> Other;
 next_player(Other,Starter,Other) -> Starter.
 
-random_idx(Width) -> crypto:rand_uniform(0, Width). % 0..Width-1
+random_idx0(Width) -> crypto:rand_uniform(0, Width). % 0..Width-1 / 0 based random integer
+
+random_idx1(Length) -> 1 + crypto:rand_uniform(1, Length). % 1..Length / 1 based random integer
 
 print_next(Next) -> ?Info("next move ~s",[[Next]]).
 
@@ -352,9 +408,9 @@ is_tie(Board, Width, Height, Run, Periodic, Player, Next) ->
     end.
 
 is_win(Board, Width, Height, Run, false, Player) -> 
-    egambo_tic_tac_win:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player);
+    egambo_tictac_win:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player);
 is_win(Board, Width, Height, Run, true, Player) -> 
-    egambo_tic_tac_wip:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player).
+    egambo_tictac_wip:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player).
 
 play_bot(#state{board=Board, width=Width, height=Height, gravity=Gravity} = State) ->
     Options = put_options(Board, Width, Height, Gravity),
@@ -371,10 +427,10 @@ play_bot(#state{board=Board, width=Width, height=Height, gravity=Gravity} = Stat
     end.
 
 play_bot_random(#state{next=Player, board=Board, gravity=false}, Options) ->
-    Idx = lists:nth(random_idx(length(Options))+1, Options),
+    Idx = lists:nth(random_idx1(length(Options)), Options),
     put(Board, Idx, Player);
 play_bot_random(#state{next=Player, board=Board, width=Width, gravity=true}, Options) ->
-    gravity_put(Board, Width, lists:nth(random_idx(length(Options))+1, Options), Player).
+    gravity_put(Board, Width, lists:nth(random_idx1(length(Options)), Options), Player).
 
 play_bot_immediate_win(_State, []) -> {nok, no_immediate_win};  
 play_bot_immediate_win(#state{board=Board, width=Width, height=Height, run=Run, gravity=false, periodic=Periodic, next=Player} = State, [Idx|Rest]) -> 

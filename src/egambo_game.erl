@@ -29,6 +29,7 @@
         ]).
 
 -export([ play/4            % play one move in a game (not going through egambo_game gen_server)
+        , forfeit/3         % give up this game
         ]).
 
 -safe([create, start, cancel, play, status]).
@@ -52,11 +53,23 @@ cancel(GameId, Opts, MyAccountId) -> gen_server:call(?MODULE, {cancel, GameId, O
 -spec accept(egGameId(), ddOptions(), ddEntityId()) -> ok | egGameError().
 accept(GameId, Opts, MyAccountId) -> gen_server:call(?MODULE, {accept, GameId, Opts, MyAccountId}).
 
+-spec status(egGameId(), ddOptions(), ddEntityId()) -> egGameResult() | egGameError().
+status(GameId, Opts, MyAccountId) -> gen_server:call(?MODULE, {status, GameId, Opts, MyAccountId}).
+
+
 -spec play(egGameId(), egGameMove(), ddOptions(), ddEntityId()) -> ok | egGameError().
 play(_GameId, _Move, _Opts, _MyAccountId) -> ?egGameNotImplemented.
 
--spec status(egGameId(), ddOptions(), ddEntityId()) -> egGameResult() | egGameError().
-status(GameId, Opts, MyAccountId) -> gen_server:call(?MODULE, {status, GameId, Opts, MyAccountId}).
+-spec forfeit(egGameId(), ddOptions(), ddEntityId()) -> ok | egGameError().
+forfeit(_GameId, _Opts, _MyAccountId) -> ?egGameNotImplemented.
+
+
+-spec preset(#egGame{}) -> #egGame{}.
+preset(#egGame{tid=GameType} = Game) ->
+    case imem_meta:read(egGameType, GameType) of
+        [#egGameType{engine=Engine} = Type] ->  Engine:preset(Type, Game);
+        _ ->                                    {error, <<"Unknown game type">>}
+    end.
 
 init(_) ->
     Result = try
@@ -95,7 +108,7 @@ handle_call({create, GameType, _Opts, MyAccountId}, _From, State) ->
 handle_call({create, _GameType, MyAccountId, _Opts, MyAccountId}, _From, State) ->
         {reply, {error, <<"You cannot create a game with yourself">>}, State};
 handle_call({create, GameType, YourAccountId, _Opts, MyAccountId}, _From, State) ->
-    % Unconditionally create a challenge
+    % Unconditionally create a challenge (game requesting a particular co-player)
     case imem_meta:read(egGameType, GameType) of
         [#egGameType{cid=Cid}] ->
             % ToDo: check for existing account               
@@ -106,39 +119,44 @@ handle_call({create, GameType, YourAccountId, _Opts, MyAccountId}, _From, State)
             {reply, {error, <<"Unknown game type">>}, State}
     end;
 handle_call({start, GameType, Opts, MyAccountId}, From, State) ->
-    % Find a matching game offering (specific to me) or forward to look for an any-match below
+    % Find a matching challenge (requesting my participation) in forming state
     case imem_meta:select(egGame, [ {#egGame{tid=GameType, status=forming, players=['$1', MyAccountId], _ = '_'}
                                   , [{'/=', '$1', MyAccountId}]
                                   , ['$_']}
                                   ]) of        
-        {[], true} ->
+        {[], true} ->           % forward to look for an any-player game in forming state
             handle_call({start_any, GameType, Opts, MyAccountId}, From, State);
         {[Game], true} ->
-            imem_meta:write(egGame, Game#egGame{status=playing, stime=imem_meta:time_uid()}),
-            % ToDo: spawn game serving instance
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
+            % ToDo: spawn game serving instance and bot instances if necessary
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            imem_meta:write(egGame, Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
     end;
 handle_call({start_any, GameType, Opts, MyAccountId}, From, State) ->    
+    % Find a matching game (not requesting particular players) in forming state
     case imem_meta:select(egGame, [ {#egGame{tid=GameType, status=forming, players=['$1'], _ = '_'}
                                   , [{'/=', '$1', MyAccountId}]
                                   , ['$_']}
                                   ]) of        
-        {[], true} ->
+        {[], true} ->           % no invitation exists, forward to unconditional game creation
             handle_call({create, GameType, Opts, MyAccountId}, From, State);
         {[Game], true} ->
             Players = Game#egGame.players ++ [MyAccountId],         % append myself to the player list
-            imem_meta:write(egGame, Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             Players = Game#egGame.players ++ [MyAccountId],         % append myself to the player list
-            imem_meta:write(egGame, Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
     end;
@@ -153,12 +171,14 @@ handle_call({start, GameType, YourAccountId, Opts, MyAccountId}, From, State) ->
         {[], true} ->
             handle_call({create, GameType, YourAccountId, Opts, MyAccountId}, From, State);
         {[Game], true} ->
-            imem_meta:write(egGame, Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            imem_meta:write(egGame, Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
     end;
@@ -180,16 +200,18 @@ handle_call({cancel, GameId, _Opts, MyAccountId}, _From, State) ->
     end;
 handle_call({accept, GameId, _Opts, MyAccountId}, _From, State) ->
     case imem_meta:read(egGame, GameId) of
-        [#egGame{status=forming, players=[_, MyAccountId]} = Game] ->               
-            imem_meta:write(egGame, Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+        [#egGame{status=forming, players=[_, MyAccountId]} = Game] ->
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),               
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, ok, State};
         [#egGame{status=forming, players=[MyAccountId, _]}] ->               
             {reply, {error, <<"You cannot accept a game with yourself">>}, State};
         [#egGame{status=forming, players=[MyAccountId]}] ->               
             {reply, {error, <<"You cannot accept a game with yourself">>}, State};
-        [#egGame{status=forming, players=[Player]} = Game] ->               
-            imem_meta:write(egGame, Game#egGame{status=playing, players=[Player, MyAccountId], stime=imem_meta:time_uid()}),
+        [#egGame{status=forming, players=[Player]} = Game] ->
+            InitializedGame = preset(Game#egGame{status=playing, players=[Player, MyAccountId], stime=imem_meta:time_uid()}),               
+            imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, ok, State};
         [#egGame{status=forming, players=[_, _]}] ->               
