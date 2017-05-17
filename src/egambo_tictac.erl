@@ -15,12 +15,11 @@
 -type egTicTacParams() ::  #{ width =>integer()
                             , height => integer()
                             , run => integer()
-                            , starter => integer()
-                            , other => integer()
                             , gravity => boolean()
                             , periodic => boolean()
                             , obstacles => [integer()] | integer()
                             , jokers => [integer()] | integer()
+                            , aliases => [integer()]
                             }.
 
 -record(state,
@@ -77,7 +76,7 @@
 
 preset(  #egGameType{ players=2
                     , params=#{ width:=Width, height:=Height
-                              , starter:=Starter, other:=Other
+                              , aliases:=Aliases
                               , gravity:=Gravity
                               , obstacles:=Obstacles, jokers:=Jokers
                               } 
@@ -105,13 +104,12 @@ preset(  #egGameType{ players=2
         {true,true} ->  gravity_put_random(Board3, Width, Jokers, ?JOKER);
         _ ->            {ok, Board3}
     end,
-    A = [Starter,Other],        % initial aliases
     S = [0,0],                  % initial scores
     M = case random_idx1(2) of
         1 -> [P1,P2];
         2 -> [P2,P1]
     end,                        % initial movers (player AccountIds)
-    Game#egGame{ialiases=A, imovers=M, preset=B, board=B, nmovers=M, naliases=A, nscores=S}. 
+    Game#egGame{ialiases=Aliases, imovers=M, preset=B, board=B, nmovers=M, naliases=Aliases, nscores=S}. 
 
 play(_GameId, _Move, _Opts, _MyAccountId) -> ?egGameNotImplemented.
 
@@ -369,7 +367,7 @@ next_player(Other,Starter,Other) -> Starter.
 
 random_idx0(Width) -> crypto:rand_uniform(0, Width). % 0..Width-1 / 0 based random integer
 
-random_idx1(Length) -> 1 + crypto:rand_uniform(1, Length). % 1..Length / 1 based random integer
+random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
 
 print_next(Next) -> ?Info("next move ~s",[[Next]]).
 

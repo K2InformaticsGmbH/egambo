@@ -64,10 +64,10 @@ play(_GameId, _Move, _Opts, _MyAccountId) -> ?egGameNotImplemented.
 forfeit(_GameId, _Opts, _MyAccountId) -> ?egGameNotImplemented.
 
 
--spec preset(#egGame{}) -> #egGame{}.
-preset(#egGame{tid=GameType} = Game) ->
+-spec preset(#egGame{}, ddOptions()) -> #egGame{}.
+preset(#egGame{tid=GameType} = Game, Opts) ->
     case imem_meta:read(egGameType, GameType) of
-        [#egGameType{engine=Engine} = Type] ->  Engine:preset(Type, Game);
+        [#egGameType{engine=Engine} = Type] ->  Engine:preset(Type, Game, Opts);
         _ ->                                    {error, <<"Unknown game type">>}
     end.
 
@@ -127,13 +127,13 @@ handle_call({start, GameType, Opts, MyAccountId}, From, State) ->
         {[], true} ->           % forward to look for an any-player game in forming state
             handle_call({start_any, GameType, Opts, MyAccountId}, From, State);
         {[Game], true} ->
-            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance and bot instances if necessary
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
@@ -148,14 +148,14 @@ handle_call({start_any, GameType, Opts, MyAccountId}, From, State) ->
             handle_call({create, GameType, Opts, MyAccountId}, From, State);
         {[Game], true} ->
             Players = Game#egGame.players ++ [MyAccountId],         % append myself to the player list
-            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             Players = Game#egGame.players ++ [MyAccountId],         % append myself to the player list
-            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{players=Players, status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
@@ -171,13 +171,13 @@ handle_call({start, GameType, YourAccountId, Opts, MyAccountId}, From, State) ->
         {[], true} ->
             handle_call({create, GameType, YourAccountId, Opts, MyAccountId}, From, State);
         {[Game], true} ->
-            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State};
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}, Opts),
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, Game#egGame.gid, State}                  
@@ -198,10 +198,10 @@ handle_call({cancel, GameId, _Opts, MyAccountId}, _From, State) ->
         _ -> 
             {reply, {error, <<"Game does not exist">>}, State}
     end;
-handle_call({accept, GameId, _Opts, MyAccountId}, _From, State) ->
+handle_call({accept, GameId, Opts, MyAccountId}, _From, State) ->
     case imem_meta:read(egGame, GameId) of
         [#egGame{status=forming, players=[_, MyAccountId]} = Game] ->
-            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}),               
+            InitializedGame = preset(Game#egGame{status=playing, stime=imem_meta:time_uid()}, Opts),               
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, ok, State};
@@ -210,7 +210,7 @@ handle_call({accept, GameId, _Opts, MyAccountId}, _From, State) ->
         [#egGame{status=forming, players=[MyAccountId]}] ->               
             {reply, {error, <<"You cannot accept a game with yourself">>}, State};
         [#egGame{status=forming, players=[Player]} = Game] ->
-            InitializedGame = preset(Game#egGame{status=playing, players=[Player, MyAccountId], stime=imem_meta:time_uid()}),               
+            InitializedGame = preset(Game#egGame{status=playing, players=[Player, MyAccountId], stime=imem_meta:time_uid()}, Opts),               
             imem_meta:write(egGame, InitializedGame),
             % ToDo: spawn game serving instance
             {reply, ok, State};
@@ -246,4 +246,14 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 format_status(_Opt, [_PDict, _State]) -> ok.
 
+% egambo_game:create(<<"tic_tac_toe">>, [], 2).
+% egambo_game:create(<<"tic_tac_toe">>, 1, [], 2).
+% egambo_game:start(<<"tic_tac_toe">>, [], 2).
+% egambo_game:start(<<"tic_tac_toe">>, 1, [], 2).
+% egambo_game:cancel(926946506377236097, [], 2).
+% egambo_game:accept(1227778950635753473, [], 2).
+% egambo_game:accept(1227778950635753473, [], 1).
+% egambo_game:status(GameId, [], 2).
+% egambo_game:start(<<"tic_tac_toe">>, [], 1).
+% egambo_game:start(<<"tic_tac_toe">>, 2, [], 1).
 
