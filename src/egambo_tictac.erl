@@ -229,7 +229,7 @@ result( #egGame{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=M
 result(GameId) -> gen_server:call(?GLOBAL_ID(GameId), result).
 
 moves( #egGame{gid=GameId, status=Status, etime=EndTime, space=Space, moves=Moves}) ->
-    #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>Moves};
+    #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>lists:reverse(Moves)};
 moves(GameId) -> gen_server:call(?GLOBAL_ID(GameId), moves).
 
 start_link(GameId)  ->
@@ -280,8 +280,12 @@ init([GameId]) ->
             GameType = egambo_game:read_type(Game#egGame.tid),
             case db_to_state(GameType, Game) of
                 #state{nmovers=Movers, players=Players, bots=Bots, etime=EndTime} = State ->
-                    print_board(State),                     % Todo: remove debugging
-                    print_next(hd(State#state.naliases)),   % Todo: remove debugging
+                    case length((Bots -- [undefined]) -- [undefined]) of
+                        2 -> ok;
+                        _ -> 
+                            print_board(State),                     % Todo: remove debugging
+                            print_next(hd(State#state.naliases))    % Todo: remove debugging
+                    end,
                     erlang:send_after(?AUTOSAVE_PERIOD, self(), {save_state, EndTime}),
                     invoke_bot_if_due(Movers, Players, Bots),
                     {ok, State};
@@ -317,9 +321,14 @@ handle_info(_, State) -> {noreply, State}.
 
 handle_call(state, _From, State) ->
     {reply, ok, State};
-handle_call(print, _From, #state{naliases=[Player|_]} = State) ->
+handle_call(print, _From, #state{status=Status, naliases=[Player|Others], nscores=Scores} = State) ->
     print_board(State),
-    print_next(Player),
+    case Status of
+        playing -> print_next(Player);
+        finished when Scores == [0,0] ->    print_tie();
+        finished when Scores == [-1,1] ->   print_win(hd(Others));
+        _ ->                                print_status(Status)
+    end,
     {reply, ok, State};
 handle_call({play, _, _}, _From, #state{status=Status} = State) when Status /= playing ->
     {reply, ?NOT_PLAYING, State};
@@ -346,11 +355,11 @@ handle_call({play, _, _, _}, _From, State) ->
 handle_call(result, _From, #state{gid=GameId, etime=EndTime, status=Status, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores} = State) ->  
     {reply, #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores}, State};
 handle_call(moves, _From, #state{gid=GameId, etime=EndTime, status=Status, space=Space, moves=Moves} = State) ->  
-    {reply, #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>Moves}, State};
+    {reply, #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>lists:reverse(Moves)}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, run=Run, periodic=Periodic, naliases=Aliases, nmovers=Movers} = State) ->
+handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, run=Run, periodic=Periodic, naliases=Aliases, nmovers=Movers, bots=Bots} = State) ->
     NewAliases = rotate(Aliases),
     NewMovers = rotate(Movers),
     NewMoves = [{hd(Aliases), Idx}|State#state.moves],
@@ -366,9 +375,13 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, ru
                                   , moves=NewMoves
                                   },
             save_state(NewState), 
-            egambo_game:notify(NewTime, GameId, close, result(NewState)),
-            print_board(NewState),      % ToDo: remove this debug stmt
-            print_win(hd(Aliases)),     % ToDo: remove this debug stmt
+            egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+            case length((Bots -- [undefined]) -- [undefined]) of
+                2 -> ok;
+                _ -> 
+                    print_board(NewState),                  % Todo: remove debugging
+                    print_win(hd(Aliases))                  % Todo: remove debugging
+            end,
             {stop, normal, NewState};
         false ->
             case is_tie(NewBoard, Width, Height, Run, Periodic, Aliases) of
@@ -382,9 +395,13 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, ru
                                           , moves=NewMoves
                                           },
                     save_state(NewState), 
-                    egambo_game:notify(NewTime, GameId, close, result(NewState)),
-                    print_board(NewState),  % ToDo: remove debug print
-                    print_tie(),            % ToDo: remove debug print
+                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+                    case length((Bots -- [undefined]) -- [undefined]) of
+                        2 -> ok;
+                        _ -> 
+                            print_board(NewState),                  % Todo: remove debugging
+                            print_tie()                             % Todo: remove debugging
+                    end,
                     {stop, normal, NewState};
                 false ->
                     NewState = State#state{ etime=NewTime
@@ -394,9 +411,13 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, ru
                                           , nscores=rotate(State#state.nscores)
                                           , moves=NewMoves
                                           },
-                    egambo_game:notify(NewTime, GameId, close, result(NewState)),
-                    print_board(NewState),      % ToDo: remove this debug stmt
-                    print_next(hd(NewAliases)), % ToDo: remove this debug stmt
+                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+                    case length((Bots -- [undefined]) -- [undefined]) of
+                        2 -> ok;
+                        _ -> 
+                            print_board(NewState),          % Todo: remove debugging
+                            print_next(hd(NewAliases))      % Todo: remove debugging
+                    end,
                     invoke_bot_if_due(NewMovers, NewState#state.players, NewState#state.bots),
                     {reply, ok, NewState}
             end
@@ -426,7 +447,7 @@ put(true, Board, Width, Idx, NewVal) ->
 
 gravity_put(_, _, _, []) -> ?ALREADY_OCCUPIED;
 gravity_put(Board, Width, NewVal, [Idx|Rest]) -> 
-    case put(true, Board, Width, Idx, NewVal) of
+    case put(false, Board, Width, Idx, NewVal) of
         {ok, Idx, Binary} ->    {ok, Idx, Binary};
         ?ALREADY_OCCUPIED ->    gravity_put(Board, Width, NewVal, Rest)
     end.
@@ -475,9 +496,13 @@ print_win(Player) ->
     ?Info("Congratulations, ~s won",[[Player]]),
         ?Info("").
 
-print_board(#state{width=Width} = State) -> 
+print_status(Status) ->
+    ?Info("Game Status, ~p",[Status]),
+        ?Info("").
+
+print_board(#state{gid=GameId, width=Width} = State) -> 
     ?Info("~s",[""]),
-    ?Info("board ~s",[" |" ++ lists:sublist(?COLS,Width) ++ "|"]),
+    ?Info("Board ~s ~p",[" |" ++ lists:sublist(?COLS,Width) ++ "|", GameId]),
     print_row(1, State).
 
 print_row(N,#state{height=Height}) when N>Height -> ok;
@@ -489,15 +514,16 @@ row_str(N,#state{width=Width, board=Board}) ->
     [lists:nth(N, ?ROWS),$|] ++ binary_to_list(binary:part(Board, (N-1) * Width, Width)) ++ "|".
 
 -spec is_tie(Board::binary(), Width::integer(), Height::integer(), Run::integer(), Periodic::boolean(), Aliases::list()) -> boolean().
-is_tie(Board, Width, Height, Run, Periodic, [Player|Other]) ->  
+is_tie(Board, Width, Height, Run, Periodic, [Player|Others]) ->  
     case binary:match(Board, <<?AVAILABLE>>) of
         nomatch -> 
             true;
-        _ -> case is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Player:8>>, [global]), Width, Height, Run, Periodic, [Player|Other]) of
+        _ -> case is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Player:8>>, [global]), Width, Height, Run, Periodic, [Player|Others]) of
                 true -> 
                     false;
                 false ->
-                    not is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Other:8>>, [global]), Width, Height, Run, Periodic, Other)
+                    Other = hd(Others),
+                    not is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Other:8>>, [global]), Width, Height, Run, Periodic, Others)
             end
     end.
 
@@ -513,13 +539,15 @@ play_bot(#state{board=Board, width=Width, height=Height, gravity=Gravity} = Stat
     case play_bot_immediate_win(State, Options) of
         {ok, Idx, NewBoard} ->   
             {ok, Idx, NewBoard};   % win in this move detected
-        _ ->
+        {nok, no_immediate_win} ->
             case play_bot_defend_immediate(State, Options) of
                 {ok, Idx, NewBoard} ->   
                     {ok, Idx, NewBoard};   % opponent's win in this move detected and taken
-                _ ->
-                    play_bot_random(State, Options)
-            end
+                {nok, no_immediate_risk} ->
+                    play_bot_random(State, Options);
+                Error -> Error
+            end;
+        Error -> Error
     end.
 
 -spec play_bot_random(#state{}, Options::list()) -> {ok, Move::integer(), NewBoard::binary()} | {error, atom()}.
@@ -537,9 +565,9 @@ play_bot_immediate_win(#state{board=Board, width=Width, height=Height, run=Run, 
 
 -spec play_bot_defend_immediate(#state{}, Options::list()) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_risk} | {error, atom()}.
 play_bot_defend_immediate(_State, []) -> {nok, no_immediate_risk};
-play_bot_defend_immediate(#state{board=Board, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, nmovers=[Player|Other]} = State, [Idx|Rest]) -> 
-    {ok, Idx, TestBoard} = put(Gravity, Board, Width, Idx, hd(Other)),
-    case is_win(TestBoard, Width, Height, Run, Periodic, Other) of
+play_bot_defend_immediate(#state{board=Board, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, naliases=[Player|Others]} = State, [I|Rest]) -> 
+    {ok, Idx, TestBoard} = put(Gravity, Board, Width, I, hd(Others)),
+    case is_win(TestBoard, Width, Height, Run, Periodic, Others) of
         true ->     put(Gravity, Board, Width, Idx, Player);
         false ->    play_bot_defend_immediate(State, Rest)
     end.

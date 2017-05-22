@@ -9,6 +9,9 @@
                             ,{purge_delay, 430000}      %% 430000 = 5 Days - 2000 sec
                             ]).
 
+-define(MAX_BATCH_COUNT, 10000).
+
+-define(BAD_BATCH_START_REQUEST, {error, <<"Bad batch start command or batch count exceeded">>}).
 -define(NO_SUCH_GAME_TYPE, {error, <<"Game type does not exist">>}).
 -define(NO_SUCH_GAME, {error, <<"Game does not exist">>}).
 -define(UNIQUE_PLAYERS, {error, <<"You cannot play against yourself">>}).
@@ -17,6 +20,31 @@
 -define(ACCEPT_MISMATCH, {error, <<"You cannot accept a challenge for another player">>}).
 -define(ACCEPT_STATUS(__ST), {error, <<"You cannot accept a game in status ", __ST/binary>>}).
 -define(BAD_COMMAND, {error, <<"Bad command or parameter format">>}).
+
+-define(DEFAULT_GAME_CATEGORIES, [ {egGameCategory,<<"tictac_challenge">>,<<"Tic Tac Challenge">>,<<"Two players alternate in placing their stones on a square board. A minimum number of consecutive stones in horizontal, vertical or diagonal direction wins. ">>}
+                                 ]).
+-define(DEFAULT_GAME_TYPES, [
+  {egGameType,<<"tic_tac_toe_p">>,<<"3x3:3 Tic-Tac-Toe periodic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => true,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe on a periodic Board">>}
+, {egGameType,<<"tic_tac_toe_g">>,<<"3x3:3 Tic-Tac-Toe with gravity">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe with Gravity ">>}
+, {egGameType,<<"gomoku_8">>,<<"8x8:5 Gomoku small ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 8,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 8},undefined,2,<<"Small Board Gomoku on 8x8 ">>}
+, {egGameType,<<"tic_tac_toe">>,<<"3x3:3 Tic-Tac-Toe classic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe classic ">>}
+, {egGameType,<<"connect_four">>,<<"7x6:4g Connect Four classic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 6,jokers => 0,obstacles => 0,periodic => false,run => 4,width => 7},undefined,2,<<"Classic Connect Four (also Captain's mistress) ">>}
+, {egGameType,<<"tic_tac_toe_443_oj">>,<<"4x4:3 Tic-Tac-Toe 1 obstacle 1 joker">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 4,jokers => 1,obstacles => 1,periodic => false,run => 3,width => 4},undefined,1,<<"Tic-Tac-Toe 4x4:3 with obstacle and joker">>}
+]).
+
+-define(DEFAULT_ACCOUNTS, [
+  {ddAccount,1,<<"bot1">>,egambo_tictac,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot1 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+, {ddAccount,2,<<"bot2">>,egambo_tictac,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot2 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+, {ddAccount,3,<<"player3">>,user,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Player3">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+, {ddAccount,4,<<"player4">>,user,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Player4">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+]).
+
+-define(DEFAULT_ROLES, [
+  {ddRole,1,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+, {ddRole,3,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+, {ddRole,4,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+, {ddRole,2,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+]).
 
 -record(state, {}).
 
@@ -35,11 +63,12 @@
 
 -export([ create/2          % unconditionally create a game against anyone, do not try to match existing offerings
         , create/3          % challenge a specific player (accept a reciprocal challenge/matching game or create a new one)
+        , create/4          % create multiple challenges in a batch
         , start/2           % want to play against anyone (accept a forming game or create your own)
         , start/3           % want to challenge a specific player (accept a matching offering or create one)
         , cancel/2          % cancel a game in forming state, only possible before playing really starts
         , accept/2          % accept a specific challenge from someone
-        , notify/4          % notify players and watchers about a game state change
+        , notify/5          % notify players and watchers about a game state change
         , result/1          % return map with current game result (board status, turn, scores)
         , moves/1           % return map with game history 
         , read_game/1       % return game status from egGame table
@@ -62,6 +91,11 @@ create(GameType, MyAccountId) ->  gen_server:call(?MODULE, {create, GameType, My
 -spec create(egGameTypeId(), egAccountId(), egAccountId()) -> egGameId() | egGameError().
 create(GameType, YourAccountId, MyAccountId) ->  gen_server:call(?MODULE, {create, GameType, YourAccountId, MyAccountId}).
 
+-spec create(egGameTypeId(), integer(), egAccountId(), egAccountId()) -> [egGameId() | egGameError()] | egGameError().
+create(GameType, Cnt, YourAccountId, MyAccountId) when is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->  
+    [gen_server:call(?MODULE, {create, GameType, YourAccountId, MyAccountId}) || _ <- lists:seq(1, Cnt)];
+create(_GameType, _Cnt, _YourAccountId, _MyAccountId) ->  ?BAD_BATCH_START_REQUEST.
+
 -spec start(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
 start(GameType, MyAccountId) ->  gen_server:call(?MODULE, {start, GameType, MyAccountId}).
 
@@ -74,10 +108,15 @@ cancel(GameId, MyAccountId) -> gen_server:call(?MODULE, {cancel, GameId, MyAccou
 -spec accept(egGameId(), egAccountId()) -> ok | egGameError().
 accept(GameId, MyAccountId) -> gen_server:call(?MODULE, {accept, GameId, MyAccountId}).
 
--spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg()) -> ok | egGameError().
-notify(EventTime, GameId, MessageType, Message) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) -> 
-    % ToDo: publish a message to be received by subscribed players and watchers
-    imem_meta:write(egGameMsg, #egGameMsg{time=EventTime, gid=GameId, msgtype=MessageType, message=Message}).
+-spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBot()]) -> ok | egGameError().
+notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) -> 
+    case lists:member(undefined, Bots) of
+        true ->
+            % ToDo: publish a message to be received by subscribed players and watchers
+            imem_meta:write(egGameMsg, #egGameMsg{time=EventTime, gid=GameId, msgtype=MessageType, message=Message});
+        false ->
+            ok  % no notifications/logs needed for games bot against bot
+    end.
 
 %% stateless (db direct access) functions
 
@@ -181,11 +220,11 @@ moves(GameId) ->
 
 %% stateless (engine access) functions with fallback to (stateful, serialized) engine creation
 
--spec play(egGameId(), egGameMove(), egAlias(), egAccountId()) -> ok | egGameError().
+-spec play(egGameId(), egGameMove(), egAlias(), egAccountId()) -> ok | game_finished | egGameError().
 play(GameId, Move, MyAlias, MyAccountId) -> 
     engine_call(GameId, {play, Move, MyAlias, MyAccountId}).
 
--spec play(egGameId(), egGameMove()) -> ok | egGameError().
+-spec play(egGameId(), egGameMove()) -> ok | game_finished | egGameError().
 play(GameId, Move) -> 
     engine_call(GameId, {play, Move}).
 
@@ -193,6 +232,7 @@ engine_call(GameId, Command) ->
     try 
         gen_server:call(?GLOBAL_ID(GameId), Command)
     catch
+        exit:{normal,_} -> game_finished;       
         exit:{noproc,_} ->        
             case resume(GameId) of 
                 ok ->   
@@ -212,12 +252,24 @@ prepare(#egGame{tid=GameType} = Game) ->
         _ ->                                    ?NO_SUCH_GAME_TYPE
     end.
 
+insert_default([]) -> ok;
+insert_default([Rec|Recs]) ->
+    case imem_meta:read(element(1,Rec), element(2,Rec)) of
+        [] ->   catch imem_meta:write(element(1,Rec), Rec);
+        _ ->    ok
+    end,
+    insert_default(Recs).
+
 init(_) ->
     Result = try
         imem_meta:init_create_table(egGameCategory, {record_info(fields, egGameCategory), ?egGameCategory, #egGameCategory{}}, [], system),  
         imem_meta:init_create_table(egGameType, {record_info(fields, egGameType), ?egGameType, #egGameType{}}, [], system),  
         imem_meta:init_create_table(egGame, {record_info(fields, egGame), ?egGame, #egGame{}}, [], system),  
         imem_meta:init_create_check_table(egGameMsg, {record_info(fields, egGameMsg), ?egGameMsg, #egGameMsg{}}, ?EG_MSG_TABLE_OPTS, system),
+        insert_default(?DEFAULT_GAME_CATEGORIES),
+        insert_default(?DEFAULT_GAME_TYPES),
+        insert_default(?DEFAULT_ACCOUNTS),
+        insert_default(?DEFAULT_ROLES),
         process_flag(trap_exit, true),
         {ok,#state{}}
     catch
@@ -256,17 +308,24 @@ handle_call({create, _GameType, MyAccountId, MyAccountId}, _From, State) ->
         {reply, ?UNIQUE_PLAYERS, State};
 handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when is_binary(GameType), is_integer(YourAccountId), is_integer(MyAccountId) ->
     % Unconditionally create a challenge (game requesting a particular co-player)
+    % If proposed YourAccountId is a bot, it will automatically be accepted (Status=playing)
     case imem_meta:read(egGameType, GameType) of
         [#egGameType{cid=Cid}] ->
             % ToDo: check for existing account               
             GameId = rand:uniform(1844674407370955200),
-            write_game(#egGame{ gid=GameId
-                              , tid=GameType
-                              , cid=Cid
-                              , players=[MyAccountId, YourAccountId]
-                              , bots=[read_bot(YourAccountId), read_bot(MyAccountId)]
-                              , ctime=eg_time()
-                              }),
+            Game = #egGame{ gid=GameId
+                          , tid=GameType
+                          , cid=Cid
+                          , players=[MyAccountId, YourAccountId]
+                          , ctime=eg_time()
+                          },
+            MyBot = read_bot(MyAccountId),
+            case read_bot(YourAccountId) of 
+                undefined ->
+                    write_game(Game#egGame{bots=[MyBot, undefined]});
+                YourBot ->
+                    save_resume(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()}))
+            end,
             {reply, GameId, State};
         _ -> 
             {reply, ?NO_SUCH_GAME_TYPE, State}
@@ -385,3 +444,5 @@ format_status(_Opt, [_PDict, _State]) -> ok.
 % egambo_tictac:resume(72673005093445425).
 % egambo_tictac:play(72673005093445425, 5, $X, 2).
 % egambo_game:play(72673005093445425,a1).
+% egambo_game:create(<<"tic_tac_toe">>, 10, 1,4).
+
