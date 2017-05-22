@@ -4,9 +4,7 @@
 
 -export([]).
 
--callback preset(GameType::#egGameType{}, Game::#egGame{}, Opts::ddOptions()) -> InitializedGame::#egGame{} | egGameError().
--callback play(GameId::egGameId(), Move::egGameMove(), Opts::ddOptions(), MyAccountId::ddEntityId()) -> ok | egGameError().
--callback forfeit(GameId::egGameId(), Opts::ddOptions(), MyAccountId::ddEntityId()) -> ok | egGameError().
--callback status(GameId::egGameId(), Opts::ddOptions(), MyAccountId::ddEntityId()) -> egGameResult() | egGameError().
--callback stop() -> ok | egGameError().
+-callback play(GameId::egGameId(), Move::egGameMove(), MyAccountId::ddEntityId()) -> ok | egGameError().
+-callback result(GameId::egGameId() | #egGame{}) -> egGameResult() | egGameError().
+-callback moves(GameId::egGameId()| #egGame{}) -> egGameMoves() | egGameError().
 

@@ -8,13 +8,22 @@
 -type egGameCategoryId()        :: binary().                
 -type egGameId()                :: integer().               % random integer
 -type egGameMove()              :: integer() | atom().      % e.g. board index, maybe parameterized commands later
--type egPlayerScore()           :: float().                 % 1.0=win, 0.0=tie, -1.0=lose (interpolations possible)
--type egGameResult()            :: #{id=>egGameId(), status=>egGameStatus(), board=>binary(), movers=>[integer()], aliases=>[integer()], scores=>[egPlayerScore()]}.
+-type egAccountId()             :: ddEntityId().            % imem AccountId
+-type egAlias()                 :: integer().               % e.g. ascii of letters X and O
+-type egScore()                 :: float().                 % 1.0=win, 0.0=tie, -1.0=lose (interpolations possible)
+-type egGameMsgType()           :: create | cancel | play | close.   
+-type egGameMsg()               :: term().
+-type egTime()                  :: ddTimeUID().
+-type egBot()                   :: undefined | module().
+-type egGameResult()            :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), board=>binary(), movers=>[egAccountId()], aliases=>[egAlias()], scores=>[egScore()]}.
+-type egGameMoves()             :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), space=>binary(), moves=>[term()]}.
 -type egGameStatus()            :: forming | playing | paused | finished | aborted.
 -type egGameError()             :: {error, atom()} | {error, binary()} | {error, {atom(), term()}} | {error, {binary(), term()}}.
 
 -define(egGameNotImplemented,   {error, not_implemented}).
 
+-define(ENGINE_ID(__GameId), {egambo, __GameId}).             % name of game engine instance
+-define(GLOBAL_ID(__GameId), {global, {egambo, __GameId}}).   % global name of game engine instance
 
 -record(egGameCategory, { cid      = <<>>  :: egGameCategoryId()    % game category id
                         , cname    = <<>>  :: binary()              % game category name
@@ -24,13 +33,13 @@
                         , binstr    % cname
                         , binstr    % info
                         ]).
-% rd(egGameCategory, {cid= <<>>, cname= <<>>, info= <<>>}).
+% rd(egGameCategory, {cid=, cname=, info=}).
 
 -record(egGameType, { tid      = <<>>  :: egGameTypeId()      % game type id
                     , tname    = <<>>  :: binary()            % game type name
                     , cid      = <<>>  :: egGameCategoryId()  % game category id
-                    , engine   = egambo_tictac :: atom()      % module implementing the egambo_gen_game behaviour
-                    , players  = 2     :: integer()           % number of players
+                    , engine           :: module()            % module implementing the egambo_gen_game behaviour
+                    , players  = 0     :: integer()           % number of players
                     , params   = #{}   :: map()               % game internal setup parameters (board size, etc.) 
                     , setup    = #{}   :: map()               % manager setup options (eg. deprecated, paring rules) 
                     , level    = 0.0   :: term()              % game difficulty
@@ -46,33 +55,35 @@
                     , term      % level
                     , binstr    % info
                     ]).
-% rd( egGameType, {tid= <<>>, tname= <<>>, cid= <<>>, engine= egambo_tictac, players=2, params=#{}, setup=#{}, level=0.0, info= <<>>}).
+% rd( egGameType, {tid=, tname=, cid=, engine=, players=, params=, setup=, level=, info=}).
 
 -record(egGame, { gid      = 0              :: egGameId()          % unique game id using ramdom integer
                 , tid      = <<>>           :: egGameTypeId()      % game type id
                 , cid      = <<>>           :: egGameCategoryId()  % game category id
-                , players  = []             :: [ddEntityId()]      % hd(players) is owner (proposer) of the game 
-                , ctime    = undefined      :: ddTimeUID()         % game create time 
-                , imovers  = []             :: [ddEntityId()]      % initial player enumeration in move sequence order
-                , ialiases = []             :: [integer()]         % initial integer aliases (codes) of players matching initial movers order
-                , preset   = <<>>           :: binary()            % initialized game state (needed to reconstruct game)
-                , stime    = undefined      :: ddTimeUID()         % game start time (forming complete time)
-                , etime    = undefined      :: ddTimestamp()       % last status change time (so far), game end time (eventually)
+                , players  = []             :: [egAccountId()]     % hd(players) is owner (proposer) of the game 
+                , bots     = []             :: [egBot()]           % internal bot player modules (undefined for external players)
+                , ctime    = undefined      :: egTime()            % game create time 
+                , ialiases = []             :: [egAlias()]         % initial integer aliases (codes) of players matching initial movers order
+                , imovers  = []             :: [egAccountId()]     % initial player enumeration in move sequence order
+                , space    = <<>>           :: term()              % initialized game space (initial board, needed to reconstruct game)
+                , stime    = undefined      :: egTime()            % game start time (forming complete time)
+                , etime    = undefined      :: egTime()            % last status change time (so far), game end time (eventually)
                 , status   = forming        :: egGameStatus()      % current game (management) status
-                , board    = <<>>           :: binary()            % current board (game state) before next move
-                , nmovers  = []             :: [ddEntityId()]      % next player AccountId enumeration for coming moves
-                , naliases = []             :: [integer()]         % next player aliases (codes) for next moves
-                , nscores  = []             :: [float()]           % player scores in next mover order (not player order)
+                , board    = <<>>           :: term()              % current board (game state) before next move
+                , nmovers  = []             :: [egAccountId()]     % next player AccountId enumeration for coming moves
+                , naliases = []             :: [egAlias()]         % next player aliases (codes) for next moves
+                , nscores  = []             :: [egScore()]         % player scores in next mover order (not player order)
                 , moves    = []             :: [term()]            % reversed list of moves by mover0, mover1, mover0, ... 
                 }).
--define(egGame, [ timestamp   % gid
+-define(egGame, [ integer     % gid
                 , binstr      % tid
                 , binstr      % cid
                 , list        % players
+                , list        % bots
                 , timestamp   % ctime
-                , list        % imovers
                 , list        % ialiases
-                , binstr      % preset
+                , list        % imovers
+                , binstr      % space
                 , timestamp   % stime
                 , timestamp   % etime
                 , atom        % status
@@ -82,6 +93,18 @@
                 , list        % nscores
                 , list        % moves
                 ]).
-% rd(egGame,{gid=0, tid= <<>>, cid= <<>>, players=[], imovers=[], ialiases=[$X, $O], preset= <<>>, stime, etime, status=forming, board= <<>>, nmovers=[], naliases=[], nscores=[], moves=[]}).
+% rd(egGame,{gid=, tid=, cid=, players=, bots=, ctime=, ialiases=, imovers=, space=, stime=, etime=, status=, board=, nmovers=, naliases=, nscores=, moves=}).
+
+-record(egGameMsg,  { time      = undefined         :: ddTimestamp() 
+                    , gid       = 0                 :: egGameId()       
+                    , msgtype   = create            :: egGameMsgType()  
+                    , message   = undefined         :: egGameMsg() 
+                    }).
+-define(egGameMsg,  [ timestamp 
+                    , integer
+                    , atom
+                    , term
+                    ]).
+% rd(egGameCategory, {time=, gid=, msgtype=, message=}).
 
 -endif.
