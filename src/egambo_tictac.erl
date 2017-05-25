@@ -1,7 +1,6 @@
 -module(egambo_tictac).
 
-% -include("egambo.hrl").         % import logging macros
--include("egambo_game.hrl").    % import game managing structures 
+-include("egambo_tictac.hrl").  % import tictac game structures 
 
 -behavior(gen_server).          % this is implemented on a gen_server basis
 -behavior(egambo_gen_game).     % callbacks used by player (mediated through egambo_game)
@@ -9,33 +8,10 @@
 
 -define(COLS, "abcdefgh").
 -define(ROWS, "12345678").
--define(OBSTACLE, $$).
--define(JOKER, $*).
--define(AVAILABLE, 32).         % spac
 -define(AUTOSAVE_PERIOD, 3000). % msec between state save to db
 
 -define(NOT_YOUR_TURN, {error, not_your_turn}).
 -define(NOT_PLAYING, {error, not_playing}).
--define(INVALID_CELL, {error, invalid_cell}).
--define(ALREADY_OCCUPIED, {error, already_occupied}).
--define(INVALID_ALIAS_PARAMETER, {error, invalid_alias_parameter}).
--define(INVALID_WIDTH_PARAMETER, {error, invalid_width_parameter}).
--define(INVALID_HEIGHT_PARAMETER, {error, invalid_height_parameter}).
--define(INVALID_RUN_PARAMETER, {error, invalid_run_parameter}).
--define(INVALID_BOARD_PARAMETER, {error, invalid_board_parameter}).
--define(INVALID_PARAMETER_CONFIG, {error, invalid_parameter_config}).
-
--include("egambo_game.hrl").
-
--type egTicTacParams() ::  #{ width => integer()
-                            , height => integer()
-                            , run => integer()
-                            , gravity => boolean()
-                            , periodic => boolean()
-                            , obstacles => [integer()] | integer()
-                            , jokers => [integer()] | integer()
-                            , aliases => [integer()]
-                            }.
 
 -record(state,  { gid        :: egGameId()  % game id
                 , tid        :: egGameTypeId()
@@ -80,6 +56,9 @@
         , play/4        % play one move for given alis and AccountId:           GameId, Cell|Command, Alias, AccountId
         , result/1      % return current game state as a json-ready map:        GameId|#egGame{}
         , moves/1       % return game history as a json-ready map               GameId|#egGame{}
+        , put/5         % changing one cell in the board (used by bots)
+        , is_win/6      % checking the board for a win (used by bots)
+        , is_tie/6      % checking the board for a tie (used by bots)
         ]).
 
 % debugging API
@@ -226,26 +205,26 @@ result( #state{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Mo
     #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
 result( #egGame{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
     #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
-result(GameId) -> gen_server:call(?GLOBAL_ID(GameId), result).
+result(GameId) -> gen_server:call(?ENGINE_GID(GameId), result).
 
 moves( #egGame{gid=GameId, status=Status, etime=EndTime, space=Space, moves=Moves}) ->
     #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>lists:reverse(Moves)};
-moves(GameId) -> gen_server:call(?GLOBAL_ID(GameId), moves).
+moves(GameId) -> gen_server:call(?ENGINE_GID(GameId), moves).
 
 start_link(GameId)  ->
-    gen_server:start_link(?GLOBAL_ID(GameId), ?MODULE, [GameId], []).
+    gen_server:start_link(?ENGINE_GID(GameId), ?MODULE, [GameId], []).
 
 state(GameId) ->
-    gen_server:call(?GLOBAL_ID(GameId), state). 
+    gen_server:call(?ENGINE_GID(GameId), state). 
 
 print(GameId) ->
-    gen_server:call(?GLOBAL_ID(GameId), print). 
+    gen_server:call(?ENGINE_GID(GameId), print). 
 
-play(GameId, Cell) -> gen_server:call(?GLOBAL_ID(GameId), {play, Cell}). 
+play(GameId, Cell) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell}). 
 
-play(GameId, Cell, Alias) -> gen_server:call(?GLOBAL_ID(GameId), {play, Cell, player_to_integer(Alias)}). 
+play(GameId, Cell, Alias) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell, player_to_integer(Alias)}). 
 
-play(GameId, Cell, Alias, MyAccountId) -> gen_server:call(?GLOBAL_ID(GameId), {play, Cell, player_to_integer(Alias), MyAccountId}). 
+play(GameId, Cell, Alias, MyAccountId) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell, player_to_integer(Alias), MyAccountId}). 
 
 player_to_integer(Player) when is_integer(Player) -> Player; 
 player_to_integer(Player) when is_atom(Player) -> hd(string:to_upper(atom_to_list(Player))); 
@@ -299,17 +278,18 @@ terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 handle_cast(_Request, State) -> {noreply, State}.
 
-handle_info({play_bot, ?MODULE}, State) -> 
-    % integrated simple and fast bot module, works with full state
-    case play_bot(State) of
-        {ok, Cell, NewBoard} ->   
-            case handle_new_move(Cell, NewBoard, State) of
-                {stop, normal, NewState} -> {stop, normal, NewState};
-                {reply, ok, NewState} ->    {noreply, NewState}
-            end;
-        _ -> 
-            {noreply, State}
+handle_info({play_bot_req, BotId}, #state{gid=GameId, tid=GameTypeId, board=Board, naliases=Aliases} = State) -> 
+    egambo_game:play_bot(BotId, GameTypeId, GameId, Board, Aliases),
+    {noreply, State};
+handle_info({play_bot_resp, Player, {ok, Cell, NewBoard}}, #state{naliases=[Player|_]} = State) ->
+    case handle_new_move(Cell, NewBoard, State) of
+        {stop, normal, NewState} -> {stop, normal, NewState};
+        {reply, ok, NewState} ->    {noreply, NewState}
     end;
+handle_info({play_bot_resp, Player, Error}, #state{gid=GameId, bots=Bots, naliases=[Player|_]} = State) ->
+    NewTime = egambo_game:eg_time(),
+    egambo_game:notify(NewTime, GameId, error, {play_bot_resp, Player, Error}, Bots),
+    {noreply, State};
 handle_info({save_state, SavedEndTime}, #state{etime=EndTime} = State) ->
     case EndTime of
         SavedEndTime    -> ok;   
@@ -423,13 +403,13 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, ru
             end
     end.
 
--spec invoke_bot_if_due(Movers::[egAccountId()], Players::[egAccountId()], Bots::[egBot()]) -> ok.
+-spec invoke_bot_if_due(Movers::[egAccountId()], Players::[egAccountId()], Bots::[egBotId()]) -> ok.
 invoke_bot_if_due(_, _, [undefined, undefined]) -> ok;
 invoke_bot_if_due([AccountId|_], Players, Bots) -> invoke_bot(AccountId, Players, Bots).
 
 invoke_bot(_, [], []) -> ok;
 invoke_bot(AccountId, [AccountId|_], [undefined|_]) -> ok;
-invoke_bot(AccountId, [AccountId|_], [Module|_]) -> self() ! {play_bot, Module};
+invoke_bot(AccountId, [AccountId|_], [Module|_]) -> self() ! {play_bot_req, Module};
 invoke_bot(AccountId, [_|Players], [_|Bots]) -> invoke_bot(AccountId, Players, Bots).
 
 -spec put(boolean(), binary(), integer(), integer(), integer()) -> {ok, integer(), binary()} | {error, atom()}.
@@ -533,46 +513,3 @@ is_win(Board, Width, Height, Run, false, [Player|_]) ->
 is_win(Board, Width, Height, Run, true, [Player|_]) -> 
     egambo_tictac_wip:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player).
 
--spec play_bot(#state{}) -> {ok, integer(), binary()} | {error, atom()}.
-play_bot(#state{board=Board, width=Width, height=Height, gravity=Gravity} = State) ->
-    Options = put_options(Board, Width, Height, Gravity),
-    case play_bot_immediate_win(State, Options) of
-        {ok, Idx, NewBoard} ->   
-            {ok, Idx, NewBoard};   % win in this move detected
-        {nok, no_immediate_win} ->
-            case play_bot_defend_immediate(State, Options) of
-                {ok, Idx, NewBoard} ->   
-                    {ok, Idx, NewBoard};   % opponent's win in this move detected and taken
-                {nok, no_immediate_risk} ->
-                    play_bot_random(State, Options);
-                Error -> Error
-            end;
-        Error -> Error
-    end.
-
--spec play_bot_random(#state{}, Options::list()) -> {ok, Move::integer(), NewBoard::binary()} | {error, atom()}.
-play_bot_random(#state{width=Width, naliases=[Player|_], board=Board, gravity=Gravity}, Options) ->
-    put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player).
-
--spec play_bot_immediate_win(#state{}, Options::list()) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_win} | {error, atom()}.
-play_bot_immediate_win(_State, []) -> {nok, no_immediate_win};  
-play_bot_immediate_win(#state{board=Board, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, naliases=Aliases} = State, [I|Rest]) -> 
-    {ok, Idx, TestBoard} = put(Gravity, Board, Width, I, hd(Aliases)),
-    case is_win(TestBoard, Width, Height, Run, Periodic, Aliases) of
-        true ->     {ok, Idx, TestBoard};
-        false ->    play_bot_immediate_win(State, Rest)
-    end.
-
--spec play_bot_defend_immediate(#state{}, Options::list()) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_risk} | {error, atom()}.
-play_bot_defend_immediate(_State, []) -> {nok, no_immediate_risk};
-play_bot_defend_immediate(#state{board=Board, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, naliases=[Player|Others]} = State, [I|Rest]) -> 
-    {ok, Idx, TestBoard} = put(Gravity, Board, Width, I, hd(Others)),
-    case is_win(TestBoard, Width, Height, Run, Periodic, Others) of
-        true ->     put(Gravity, Board, Width, Idx, Player);
-        false ->    play_bot_defend_immediate(State, Rest)
-    end.
-
-put_options(Board, Width, Height, false) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,Width*Height-1))]) -- [false];
-put_options(Board, Width, _Height, true) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false].

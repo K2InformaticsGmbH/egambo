@@ -13,4 +13,4 @@
 % -callback result(GameId::egGameId()) -> egGameResult() | egGameError().
 % -callback moves(GameId::egGameId()) -> [term()] | egGameError().
 
--callback play(GameId::egGameId(), Move::egGameMove(), MyAlias::egAlias(), MyAccountId::egAccountId()) -> ok | egGameError().
+% -callback play_bot(GameId::egGameId(), ) -> ok | egGameError().

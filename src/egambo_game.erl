@@ -33,8 +33,8 @@
 ]).
 
 -define(DEFAULT_ACCOUNTS, [
-  {ddAccount,1,<<"bot1">>,egambo_tictac,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot1 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
-, {ddAccount,2,<<"bot2">>,egambo_tictac,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot2 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+  {ddAccount,1,<<"bot1">>,egambo_tictac_bot,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot1 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
+, {ddAccount,2,<<"bot2">>,egambo_tictac_bot,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Bot2 simple tic_tac_bot">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
 , {ddAccount,3,<<"player3">>,user,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Player3">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
 , {ddAccount,4,<<"player4">>,user,[{scrypt,{<<58,37,63,119,99,72,15,176,129,198,51,111,57,75,39,108,115,32,240,124,125,78,88,192,158,90,201,226,44,187,133,119>>,<<114,104,245,152,103,199,134,8,178,201,226,224,8,20,249,200,124,66,148,136,249,59,245,209,138,158,181,66,138,205,7,7,106,136,30,150,216,105,38,32,87,74,240,42,101,1,150,56,78,96,67,9,215,136,94,165,226,231,127,237,80,158,141,231>>}}],<<"Player4">>,undefined,undefined,{{2017,3,26},{20,54,40}},false}
 ]).
@@ -79,6 +79,7 @@
 
 -export([ play/4            % play one move: GameId, Cell|Command, Alias, AccountId     (not going through egambo_game gen_server if engine is running)
         , play/2            % play one move: GameId, Cell|Command                       (in the name of the next player)
+        , play_bot/5        % trigger a bot to play one move (async)
         ]).
 
 -safe([create, start, cancel, accept, play, result, moves, time]).
@@ -108,7 +109,7 @@ cancel(GameId, MyAccountId) -> gen_server:call(?MODULE, {cancel, GameId, MyAccou
 -spec accept(egGameId(), egAccountId()) -> ok | egGameError().
 accept(GameId, MyAccountId) -> gen_server:call(?MODULE, {accept, GameId, MyAccountId}).
 
--spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBot()]) -> ok | egGameError().
+-spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBotId()]) -> ok | egGameError().
 notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) -> 
     case lists:member(undefined, Bots) of
         true ->
@@ -117,6 +118,10 @@ notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), 
         false ->
             ok  % no notifications/logs needed for games bot against bot
     end.
+
+-spec play_bot(egBotId(), egGameTypeId(), egGameId(), binary(), [egAlias()]) -> {ok, integer(), binary()} | {error, atom()}.
+play_bot(BotId, GameTypeId, GameId, Board, Aliases) ->
+        gen_server:cast(?BOT_GID(BotId, GameTypeId), {play_bot_req, GameId, Board, Aliases}).
 
 %% stateless (db direct access) functions
 
@@ -187,7 +192,7 @@ resume(GameId) ->
 -spec result(egGameId()) -> egGameResult() | egGameError().
 result(GameId) -> 
     try 
-        gen_server:call(?GLOBAL_ID(GameId), result)
+        gen_server:call(?ENGINE_GID(GameId), result)
     catch 
         exit:{noproc,_} ->             
             case read_game(GameId) of
@@ -204,7 +209,7 @@ result(GameId) ->
 -spec moves(egGameId()) -> egGameMoves() | egGameError().
 moves(GameId) -> 
     try 
-        gen_server:call(?GLOBAL_ID(GameId), moves)
+        gen_server:call(?ENGINE_GID(GameId), moves)
     catch
         exit:{noproc,_} ->             
             case read_game(GameId) of
@@ -230,14 +235,14 @@ play(GameId, Move) ->
 
 engine_call(GameId, Command) -> 
     try 
-        gen_server:call(?GLOBAL_ID(GameId), Command)
+        gen_server:call(?ENGINE_GID(GameId), Command)
     catch
         exit:{normal,_} -> game_finished;       
         exit:{noproc,_} ->        
             case resume(GameId) of 
                 ok ->   
                     try 
-                        gen_server:call(?GLOBAL_ID(GameId), Command)
+                        gen_server:call(?ENGINE_GID(GameId), Command)
                     catch 
                         _:Err -> Err
                     end; 

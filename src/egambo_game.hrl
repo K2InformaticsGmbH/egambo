@@ -8,13 +8,17 @@
 -type egGameCategoryId()        :: binary().                
 -type egGameId()                :: integer().               % random integer
 -type egGameMove()              :: integer() | atom().      % e.g. board index, maybe parameterized commands later
+-type egBotMove()               :: {ok, integer(), binary()} | egGameError().  % e.g. board index / move command and NewBoard
+-type egBotMoveCmd()            :: {ok, integer(), binary()} | egGameError().  % e.g. board index / move command and NewBoard
 -type egAccountId()             :: ddEntityId().            % imem AccountId
 -type egAlias()                 :: integer().               % e.g. ascii of letters X and O
 -type egScore()                 :: float().                 % 1.0=win, 0.0=tie, -1.0=lose (interpolations possible)
 -type egGameMsgType()           :: create | cancel | play | close.   
 -type egGameMsg()               :: term().
 -type egTime()                  :: ddTimeUID().
--type egBot()                   :: undefined | module().
+-type egBotId()                 :: undefined | module().
+-type egBotStatus()             :: undefined | starting | learning | playing | stopped.
+-type egEngine()                :: module().
 -type egGameResult()            :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), board=>binary(), movers=>[egAccountId()], aliases=>[egAlias()], scores=>[egScore()]}.
 -type egGameMoves()             :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), space=>binary(), moves=>[term()]}.
 -type egGameStatus()            :: forming | playing | paused | finished | aborted.
@@ -23,7 +27,9 @@
 -define(egGameNotImplemented,   {error, not_implemented}).
 
 -define(ENGINE_ID(__GameId), {egambo, __GameId}).             % name of game engine instance
--define(GLOBAL_ID(__GameId), {global, {egambo, __GameId}}).   % global name of game engine instance
+-define(ENGINE_GID(__GameId), {global, {egambo, __GameId}}).  % global name of game engine instance
+-define(BOT_ID(__BotId, __GameTypeId), {egambo_bot, __BotId, __GameTypeId}).   % name of bot instance
+-define(BOT_GID(__BotId, __GameTypeId), {global, {egambo_bot, __BotId, __GameTypeId}}).   % global name of bot instance
 
 -record(egGameCategory, { cid      = <<>>  :: egGameCategoryId()    % game category id
                         , cname    = <<>>  :: binary()              % game category name
@@ -61,7 +67,7 @@
                 , tid      = <<>>           :: egGameTypeId()      % game type id
                 , cid      = <<>>           :: egGameCategoryId()  % game category id
                 , players  = []             :: [egAccountId()]     % hd(players) is owner (proposer) of the game 
-                , bots     = []             :: [egBot()]           % internal bot player modules (undefined for external players)
+                , bots     = []             :: [egBotId()]         % internal bot player modules (undefined for external players)
                 , ctime    = undefined      :: egTime()            % game create time 
                 , ialiases = []             :: [egAlias()]         % initial integer aliases (codes) of players matching initial movers order
                 , imovers  = []             :: [egAccountId()]     % initial player enumeration in move sequence order
