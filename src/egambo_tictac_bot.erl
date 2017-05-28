@@ -31,11 +31,15 @@
 % egambo_gen_engine behavior callbacks, used by eg_game (game manager)
 -export([ resume/1      % instruct supervisor to start the bot process and resume the game
         , stop/1        % instruct supervisor to stop the bot process (no attempt to save the state)
+        , game_types/1  % return list of supported game types for given game engine (or atom 'all') 
         ]).
 
 % debugging API
 -export([ state/1
         ]).
+
+game_types(egambo_tictac) -> all;
+game_types(_) -> [].
 
 init([GameTypeId]) ->
     Result = try
@@ -116,14 +120,20 @@ send_to_engine(GameId, Message) ->
 
 -spec resume(egGameTypeId()) -> ok | egGameError().
 resume(GameTypeId) ->
-    ChildSpec = { [?MODULE, GameTypeId]                         % ChildId
+    ChildSpec = { ?BOT_ID(?MODULE, GameTypeId)                  % ChildId
                 , {?MODULE, start_link, [GameTypeId]}           % {M,F,A}
                 , permanent                                     % do restart automatically
                 , 1000                                          % Shutdown timeout
                 , worker                                        % Type
                 , [?MODULE]                                     % Modules
                 },
-    supervisor:start_child(egambo_sup, ChildSpec).
+    case supervisor:start_child(egambo_sup, ChildSpec) of
+        {ok,_} ->                       ok;
+        {ok,_,_} ->                     ok;
+        {error, already_present} ->     ok;
+        {error,{already_started,_}} ->  ok;
+        Error ->                        Error
+    end.
 
 -spec stop(egBotId()) -> ok | egGameError().
 stop(GameTypeId) ->

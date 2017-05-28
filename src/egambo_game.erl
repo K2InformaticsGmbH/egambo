@@ -20,6 +20,7 @@
 -define(ACCEPT_MISMATCH, {error, <<"You cannot accept a challenge for another player">>}).
 -define(ACCEPT_STATUS(__ST), {error, <<"You cannot accept a game in status ", __ST/binary>>}).
 -define(BAD_COMMAND, {error, <<"Bad command or parameter format">>}).
+-define(BAD_ACCOUNT, {error, <<"Bad account format">>}).
 
 -define(DEFAULT_GAME_CATEGORIES, [ {egGameCategory,<<"tictac_challenge">>,<<"Tic Tac Challenge">>,<<"Two players alternate in placing their stones on a square board. A minimum number of consecutive stones in horizontal, vertical or diagonal direction wins. ">>}
                                  ]).
@@ -40,10 +41,13 @@
 ]).
 
 -define(DEFAULT_ROLES, [
-  {ddRole,1,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
-, {ddRole,3,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
-, {ddRole,4,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
-, {ddRole,2,[],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+  {ddRole,system,[egambo,dderl],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+, {ddRole,egambo,[],[{eval_mfa,egambo_game,create},{eval_mfa,egambo_game,start},{eval_mfa,egambo_game,cancel},{eval_mfa,egambo_game,play},{eval_mfa,egambo_game,result},{eval_mfa,egambo_game,moves}],[]}
+, {ddRole,dderl,[],[{dderl,restart},{dderl,conn,local,use},{dderl,conn,{owner,system},use},{dderl,conn,manage}],[]}
+, {ddRole,1,[],[],[]}
+, {ddRole,2,[],[],[]}
+, {ddRole,3,[system],[],[]}
+, {ddRole,4,[system],[],[]}
 ]).
 
 -record(state, {}).
@@ -74,7 +78,13 @@
         , read_game/1       % return game status from egGame table
         , read_type/1       % return game status from egGame table
         , write_game/1      % write a game record to the db
+        , resume/1          % resume (restart from saved state) one or several games
+        , stop/1            % stop (forward stop stignal to engine) one or more games
+        , resume_bots/2     % check if bots are running, resume them if necessary
         , eg_time/0         % return system timestamp in the format required for game tables
+        , eg_time_to_sec/1
+        , eg_time_to_msec/1
+        , eg_time_to_usec/1
         ]).
 
 -export([ play/4            % play one move: GameId, Cell|Command, Alias, AccountId     (not going through egambo_game gen_server if engine is running)
@@ -87,27 +97,40 @@
 %% stateful game management functions (run through gen_server for serializability)
 
 -spec create(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
-create(GameType, MyAccountId) ->  gen_server:call(?MODULE, {create, GameType, MyAccountId}).
+create(GameType, MyAcc) when is_integer(MyAcc) ->  
+    gen_server:call(?MODULE, {create, GameType, MyAcc});
+create(_, _) -> ?BAD_ACCOUNT.
 
 -spec create(egGameTypeId(), egAccountId(), egAccountId()) -> egGameId() | egGameError().
-create(GameType, YourAccountId, MyAccountId) ->  gen_server:call(?MODULE, {create, GameType, YourAccountId, MyAccountId}).
+create(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  
+    gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc});
+create(_, _, _) -> ?BAD_ACCOUNT.
 
 -spec create(egGameTypeId(), integer(), egAccountId(), egAccountId()) -> [egGameId() | egGameError()] | egGameError().
-create(GameType, Cnt, YourAccountId, MyAccountId) when is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->  
-    [gen_server:call(?MODULE, {create, GameType, YourAccountId, MyAccountId}) || _ <- lists:seq(1, Cnt)];
-create(_GameType, _Cnt, _YourAccountId, _MyAccountId) ->  ?BAD_BATCH_START_REQUEST.
+create(GameType, Cnt, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc), is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->  
+    [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, Cnt)];
+create(_, _, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  ?BAD_BATCH_START_REQUEST;
+create(_, _, _, _) -> ?BAD_ACCOUNT.
 
 -spec start(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
-start(GameType, MyAccountId) ->  gen_server:call(?MODULE, {start, GameType, MyAccountId}).
+start(GameType, MyAcc) when is_integer(MyAcc) ->  
+    gen_server:call(?MODULE, {start, GameType, MyAcc});
+start(_, _) -> ?BAD_ACCOUNT.
 
 -spec start(egGameTypeId(), egAccountId(), egAccountId()) -> egGameId() | egGameError().
-start(GameType, YourAccountId, MyAccountId) ->  gen_server:call(?MODULE, {start, GameType, YourAccountId, MyAccountId}).
+start(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  
+    gen_server:call(?MODULE, {start, GameType, YourAcc, MyAcc});
+start(_, _, _) -> ?BAD_ACCOUNT.
 
 -spec cancel(egGameId(), egAccountId()) -> ok | egGameError().
-cancel(GameId, MyAccountId) -> gen_server:call(?MODULE, {cancel, GameId, MyAccountId}).
+cancel(GameId, MyAcc) when is_integer(MyAcc) -> 
+    gen_server:call(?MODULE, {cancel, GameId, MyAcc});
+cancel(_, _) -> ?BAD_ACCOUNT.
 
 -spec accept(egGameId(), egAccountId()) -> ok | egGameError().
-accept(GameId, MyAccountId) -> gen_server:call(?MODULE, {accept, GameId, MyAccountId}).
+accept(GameId, MyAcc) when is_integer(MyAcc) -> 
+    gen_server:call(?MODULE, {accept, GameId, MyAcc});
+accept(_, _) -> ?BAD_ACCOUNT.
 
 -spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBotId()]) -> ok | egGameError().
 notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) -> 
@@ -119,6 +142,21 @@ notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), 
             ok  % no notifications/logs needed for games bot against bot
     end.
 
+-spec resume_bots(egGameTypeId(), [egBotId()]) -> ok | egGameError().
+resume_bots(_GameTypeId, []) -> ok;
+resume_bots(GameTypeId, [undefined|Bots]) ->
+    resume_bots(GameTypeId, Bots);
+resume_bots(GameTypeId, [Bot|Bots]) ->
+    case global:whereis_name(?BOT_GID(Bot, GameTypeId)) of
+        undefined -> 
+            case Bot:resume(GameTypeId) of
+                ok ->       resume_bots(GameTypeId, Bots);
+                Error ->    Error
+            end;
+        Pid when is_pid(Pid) -> 
+            resume_bots(GameTypeId, Bots)
+    end.
+
 -spec play_bot(egBotId(), egGameTypeId(), egGameId(), binary(), [egAlias()]) -> {ok, integer(), binary()} | {error, atom()}.
 play_bot(BotId, GameTypeId, GameId, Board, Aliases) ->
         gen_server:cast(?BOT_GID(BotId, GameTypeId), {play_bot_req, GameId, Board, Aliases}).
@@ -127,6 +165,21 @@ play_bot(BotId, GameTypeId, GameId, Board, Aliases) ->
 
 -spec eg_time() -> egTime().
 eg_time() -> imem_meta:time_uid().
+
+-spec eg_time_to_sec(egTime()) -> undefined |integer().
+eg_time_to_sec(undefined) -> undefined;
+eg_time_to_sec({Sec,_,_,_}) -> Sec;
+eg_time_to_sec({Sec,_}) -> Sec.
+
+-spec eg_time_to_msec(egTime()) -> undefined |integer().
+eg_time_to_msec(undefined) -> undefined;
+eg_time_to_msec({Sec,Micro,_,_}) -> 1000*Sec+Micro div 1000;
+eg_time_to_msec({Sec,Micro}) -> 1000*Sec+Micro div 1000.
+
+-spec eg_time_to_usec(egTime()) -> undefined |integer().
+eg_time_to_usec(undefined) -> undefined;
+eg_time_to_usec({Sec,Micro,_,_}) -> 1000000*Sec+Micro;
+eg_time_to_usec({Sec,Micro}) -> 1000000*Sec+Micro.
 
 -spec read_game(egGameId()) -> #egGame{} | egGameError().
 read_game(GameId) -> 
@@ -177,12 +230,39 @@ save_resume(#egGame{gid=GameId, tid=GameType} = Game) ->
         Error ->                        Error
     end.   
 
--spec resume(egGameId()) -> ok | egGameError().
-resume(GameId) ->
+-spec resume(egGameId() | [egGameId()]) -> ok | egGameError().
+resume(GameIds) when is_list(GameIds) ->
+    case lists:usort([ resume(ID) || ID <- GameIds]) of
+        [ok] -> ok;
+        Errlist -> {error, Errlist}
+    end;
+resume(GameId)  ->
+    case read_game(GameId) of
+        #egGame{tid=GameType, bots=Bots} ->
+            case resume_bots(GameType, Bots) of   
+                ok ->
+                    case read_type(GameType) of
+                        #egGameType{engine=Engine} ->   Engine:resume(GameId);
+                        Error ->                        Error
+                    end;
+                Error ->
+                    Error
+            end;   
+        Error ->
+            Error
+    end.  
+
+-spec stop(egGameId() | [egGameId()]) -> ok | egGameError().
+stop(GameIds) when is_list(GameIds) ->
+    case lists:usort([ stop(ID) || ID <- GameIds]) of
+        [ok] -> ok;
+        Errlist -> {error, Errlist}
+    end;
+stop(GameId)  ->
     case read_game(GameId) of
         #egGame{tid=GameType} ->   
             case read_type(GameType) of
-                #egGameType{engine=Engine} ->   Engine:resume(GameId);
+                #egGameType{engine=Engine} ->   Engine:stop(GameId);
                 Error ->                        Error
             end;   
         Error ->
@@ -293,7 +373,7 @@ start_link() ->
             Error
     end.
 
-handle_call({create, GameType, MyAccountId}, _From, State) ->
+handle_call({create, GameType, MyAccountId}, _From, State) when is_binary(GameType), is_integer(MyAccountId) ->
     % Unconditionally create a game    
     case read_type(GameType) of
         #egGameType{cid=Cid} ->               
@@ -327,11 +407,17 @@ handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when i
             MyBot = read_bot(MyAccountId),
             case read_bot(YourAccountId) of 
                 undefined ->
-                    write_game(Game#egGame{bots=[MyBot, undefined]});
+                    write_game(Game#egGame{bots=[MyBot, undefined]}),
+                    {reply, GameId, State};
                 YourBot ->
-                    save_resume(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()}))
-            end,
-            {reply, GameId, State};
+                    case resume_bots(GameType, [MyBot, YourBot]) of
+                        ok ->
+                            save_resume(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()})),
+                            {reply, GameId, State};
+                        Error -> 
+                            {reply, Error, State}
+                    end
+            end;
         _ -> 
             {reply, ?NO_SUCH_GAME_TYPE, State}
     end;
@@ -344,9 +430,14 @@ handle_call({start, GameType, MyAccountId}, From, State) when is_binary(GameType
         {[], true} ->           % forward to look for an any-player game in forming state
             handle_call({start_any, GameType, MyAccountId}, From, State);
         {Games, _} ->
-            #egGame{gid=GameId} = Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
-            {reply, GameId, State}                  
+            #egGame{gid=GameId, bots=Bots} = Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
+            case resume_bots(GameType, Bots) of
+                ok ->
+                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
+                    {reply, GameId, State};
+                Error ->
+                    {reply, Error, State}
+            end
     end;
 handle_call({start_any, GameType, MyAccountId}, From, State) when is_binary(GameType), is_integer(MyAccountId) ->    
     % Find a matching game (not requesting particular players) in forming state
@@ -358,8 +449,14 @@ handle_call({start_any, GameType, MyAccountId}, From, State) when is_binary(Game
             handle_call({create, GameType, MyAccountId}, From, State);
         {Games, _} ->
             #egGame{players=[P], bots=[B]} = Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            save_resume(prepare(Game#egGame{players=[P, MyAccountId], bots=[B, read_bot(MyAccountId)], status=playing, stime=eg_time()})),
-            {reply, Game#egGame.gid, State}                  
+            Bots = [B, read_bot(MyAccountId)],
+            case resume_bots(GameType, Bots) of
+                ok ->   
+                    save_resume(prepare(Game#egGame{players=[P, MyAccountId], bots=Bots, status=playing, stime=eg_time()})),
+                    {reply, Game#egGame.gid, State};
+                Error ->
+                    {reply, Error, State}
+            end
     end;
 handle_call({start, _GameType, MyAccountId, MyAccountId}, _From, State) ->
     {reply, ?UNIQUE_PLAYERS, State};
@@ -373,8 +470,13 @@ handle_call({start, GameType, YourAccountId, MyAccountId}, From, State) when is_
             handle_call({create, GameType, YourAccountId, MyAccountId}, From, State);
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
-            save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
-            {reply, Game#egGame.gid, State}                  
+            case resume_bots(GameType, Game#egGame.bots) of
+                ok ->   
+                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
+                    {reply, Game#egGame.gid, State};
+                Error ->
+                    {reply, Error, State}
+            end
     end;
 handle_call({cancel, GameId, MyAccountId}, _From, State) when is_integer(GameId), is_integer(MyAccountId) ->
     case imem_meta:read(egGame, GameId) of
@@ -394,21 +496,32 @@ handle_call({cancel, GameId, MyAccountId}, _From, State) when is_integer(GameId)
     end;
 handle_call({accept, GameId, MyAccountId}, _From, State) when is_integer(GameId), is_integer(MyAccountId) ->
     case imem_meta:read(egGame, GameId) of
-        [#egGame{status=forming, players=[_, MyAccountId]} = Game] ->
-            save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})), 
-            {reply, ok, State};
+        [#egGame{status=forming, tid=GameType, players=[_, MyAccountId], bots=Bots} = Game] ->
+            case resume_bots(GameType, Bots) of
+                ok ->   
+                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})), 
+                    {reply, ok, State};
+                Error ->
+                    {reply, Error, State}
+            end;
         [#egGame{status=forming, players=[MyAccountId, _]}] ->               
             {reply, ?UNIQUE_PLAYERS, State};
         [#egGame{status=forming, players=[MyAccountId]}] ->               
             {reply, ?UNIQUE_PLAYERS, State};
-        [#egGame{status=forming, players=[Player], bots=[Bot]} = Game] ->
-            save_resume(prepare(Game#egGame{ status=playing
+        [#egGame{status=forming, tid=GameType, players=[Player], bots=[Bot]} = Game] ->
+            Bots = [Bot, read_bot(MyAccountId)],
+            case resume_bots(GameType, Bots) of
+                ok ->
+                    save_resume(prepare(Game#egGame{ status=playing
                                                  , players=[Player, MyAccountId]
-                                                 , bots=[Bot, read_bot(MyAccountId)]
+                                                 , bots=Bots
                                                  , stime=eg_time()
                                                  }
                                      )),               
-            {reply, ok, State};
+                    {reply, ok, State};
+                Error ->
+                    {reply, Error, State}
+            end;
         [#egGame{status=forming, players=[_, _]}] ->               
             {reply, ?ACCEPT_MISMATCH, State};
         [#egGame{status=Status}] ->

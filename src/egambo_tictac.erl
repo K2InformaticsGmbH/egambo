@@ -188,27 +188,32 @@ prepare( #egGameType{ players=2
 -spec resume(egGameId()) -> ok | egGameError().
 resume(GameId) ->
     ChildSpec = { ?ENGINE_ID(GameId)                                    % ChildId
-                , {egambo_tictac, start_link, [GameId]}                 % {M,F,A}
+                , {?MODULE, start_link, [GameId]}                       % {M,F,A}
                 , temporary                                             % do not restart automatically
                 , 1000                                                  % Shutdown timeout
                 , worker                                                % Type
-                , [egambo_tictac]                                       % Modules
+                , [?MODULE]                                             % Modules
                 },
-    supervisor:start_child(egambo_sup, ChildSpec).
+    case supervisor:start_child(egambo_sup, ChildSpec) of
+        {ok,_} ->                       ok;
+        {ok,_,_} ->                     ok;
+        {error, already_present} ->     ok;
+        {error,{already_started,_}} ->  ok;
+        Error ->                        Error
+    end.
 
 -spec stop(egGameId()) -> ok | egGameError().
 stop(GameId) ->
-    supervisor:terminate_child(egambo_sup, ?ENGINE_ID(GameId)),
-    supervisor:delete_child(egambo_sup, ?ENGINE_ID(GameId)).
+    supervisor:terminate_child(egambo_sup, ?ENGINE_ID(GameId)).
 
 result( #state{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
-    #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
+    #{id=>GameId, etime=>?EG_SEC(EndTime), status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
 result( #egGame{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
-    #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
+    #{id=>GameId, etime=>?EG_SEC(EndTime), status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
 result(GameId) -> gen_server:call(?ENGINE_GID(GameId), result).
 
 moves( #egGame{gid=GameId, status=Status, etime=EndTime, space=Space, moves=Moves}) ->
-    #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>lists:reverse(Moves)};
+    #{id=>GameId, etime=>?EG_SEC(EndTime), status=>Status, space=>Space, moves=>lists:reverse(Moves)};
 moves(GameId) -> gen_server:call(?ENGINE_GID(GameId), moves).
 
 start_link(GameId)  ->
@@ -268,7 +273,8 @@ init([GameId]) ->
                     erlang:send_after(?AUTOSAVE_PERIOD, self(), {save_state, EndTime}),
                     invoke_bot_if_due(Movers, Players, Bots),
                     {ok, State};
-                Error -> Error
+                Error -> 
+                    Error
             end;
         _ ->
             {stop, ?NOT_PLAYING}
@@ -300,7 +306,7 @@ handle_info({save_state, SavedEndTime}, #state{etime=EndTime} = State) ->
 handle_info(_, State) -> {noreply, State}.
 
 handle_call(state, _From, State) ->
-    {reply, ok, State};
+    {reply, State, State};
 handle_call(print, _From, #state{status=Status, naliases=[Player|Others], nscores=Scores} = State) ->
     print_board(State),
     case Status of

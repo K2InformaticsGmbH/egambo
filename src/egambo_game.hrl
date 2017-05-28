@@ -19,8 +19,8 @@
 -type egBotId()                 :: undefined | module().
 -type egBotStatus()             :: undefined | starting | learning | playing | stopped.
 -type egEngine()                :: module().
--type egGameResult()            :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), board=>binary(), movers=>[egAccountId()], aliases=>[egAlias()], scores=>[egScore()]}.
--type egGameMoves()             :: #{id=>egGameId(), etime=> egTime(), status=>egGameStatus(), space=>binary(), moves=>[term()]}.
+-type egGameResult()            :: #{id=>egGameId(), etime=> integer(), status=>egGameStatus(), board=>binary(), movers=>[egAccountId()], aliases=>[egAlias()], scores=>[egScore()]}.
+-type egGameMoves()             :: #{id=>egGameId(), etime=> integer(), status=>egGameStatus(), space=>binary(), moves=>[term()]}.
 -type egGameStatus()            :: forming | playing | paused | finished | aborted.
 -type egGameError()             :: {error, atom()} | {error, binary()} | {error, {atom(), term()}} | {error, {binary(), term()}}.
 
@@ -28,8 +28,8 @@
 
 -define(ENGINE_ID(__GameId), {egambo, __GameId}).             % name of game engine instance
 -define(ENGINE_GID(__GameId), {global, {egambo, __GameId}}).  % global name of game engine instance
--define(BOT_ID(__BotId, __GameTypeId), {egambo_bot, __BotId, __GameTypeId}).   % name of bot instance
--define(BOT_GID(__BotId, __GameTypeId), {global, {egambo_bot, __BotId, __GameTypeId}}).   % global name of bot instance
+-define(BOT_ID(__BotId, __GameTypeId), {__BotId, __GameTypeId}).   % name of bot instance
+-define(BOT_GID(__BotId, __GameTypeId), {global, {__BotId, __GameTypeId}}).   % global name of bot instance
 
 -record(egGameCategory, { cid      = <<>>  :: egGameCategoryId()    % game category id
                         , cname    = <<>>  :: binary()              % game category name

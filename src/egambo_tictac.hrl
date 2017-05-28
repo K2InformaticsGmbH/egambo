@@ -18,6 +18,10 @@
 -define(INVALID_BOARD_PARAMETER, {error, invalid_board_parameter}).
 -define(INVALID_PARAMETER_CONFIG, {error, invalid_parameter_config}).
 
+-define(EG_SEC(__T),egambo_game:eg_time_to_sec(__T)).
+-define(EG_MSEC(__T),egambo_game:eg_time_to_msec(__T)).
+-define(EG_USEC(__T),egambo_game:eg_time_to_usec(__T)).
+
 -type egTicTacParams() ::  #{ width => integer()
                             , height => integer()
                             , run => integer()
