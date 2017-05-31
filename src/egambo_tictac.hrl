@@ -17,10 +17,14 @@
 -define(INVALID_RUN_PARAMETER, {error, invalid_run_parameter}).
 -define(INVALID_BOARD_PARAMETER, {error, invalid_board_parameter}).
 -define(INVALID_PARAMETER_CONFIG, {error, invalid_parameter_config}).
+-define(MISSING_WIN_MODULE, {error, missing_win_module}).
+-define(MISSING_WIN_FUNCTION, {error, missing_win_function}).
 
 -define(EG_SEC(__T),egambo_game:eg_time_to_sec(__T)).
 -define(EG_MSEC(__T),egambo_game:eg_time_to_msec(__T)).
 -define(EG_USEC(__T),egambo_game:eg_time_to_usec(__T)).
+
+-type egWinId()             :: undefined | module().  % module which implements win(Board,Player) function
 
 -type egTicTacParams() ::  #{ width => integer()
                             , height => integer()

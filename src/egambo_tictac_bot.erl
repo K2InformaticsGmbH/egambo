@@ -13,6 +13,7 @@
                 , run        :: integer()       % sucess run length
                 , gravity    :: boolean()       % do moves fall towards higher row numbers
                 , periodic   :: boolean()       % unbounded repeating board
+                , winmod     :: egWinId()       % win function module
                 , players    :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
                 }).
@@ -44,14 +45,20 @@ game_types(_) -> [].
 init([GameTypeId]) ->
     Result = try
         #egGameType{engine=Engine, players=Players, params=Params} = egambo_game:read_type(GameTypeId),
+        Width=maps:get(width, Params),
+        Height=maps:get(height, Params),
+        Run=maps:get(run, Params),
+        Gravity=maps:get(gravity, Params),
+        Periodic=maps:get(periodic, Params),           
         State = #state{ bid=?MODULE 
                       , tid=GameTypeId
                       , engine=Engine
-                      , width=maps:get(width, Params)
-                      , height=maps:get(height, Params)
-                      , run=maps:get(run, Params)
-                      , gravity=maps:get(gravity, Params)
-                      , periodic=maps:get(periodic, Params)
+                      , width=Width
+                      , height=Height
+                      , run=Run
+                      , gravity=Gravity
+                      , periodic=Periodic
+                      , winmod=egambo_tictac:win_module(Width, Height, Run, Periodic)
                       , players=Players
                       , status=playing
                       },
@@ -73,18 +80,18 @@ handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{status=Status} = State
     play_bot_resp(GameId, Player, ?BOT_NOT_PLAYING),
     {noreply, State};
 handle_cast({play_bot_req, GameId, Board, Aliases}, #state{ width=Width, height=Height, run=Run
-                                                          , gravity=Gravity, periodic=Periodic
+                                                          , gravity=Gravity, periodic=Periodic, winmod=WinMod
                                                           } = State) -> 
     Options = put_options(Board, Width, Height, Gravity),
-    case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, Aliases, Options) of
+    case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options) of
         {ok, Idx, NewBoard} ->              % win in this move detected
             play_bot_resp(GameId, hd(Aliases), {ok, Idx, NewBoard}); 
         {nok, no_immediate_win} ->
-            case play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, Aliases, Options) of
+            case play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options) of
                 {ok, Idx, NewBoard} ->      % opponent's win in this move detected and taken
                     play_bot_resp(GameId, hd(Aliases), {ok, Idx, NewBoard});
                 {nok, no_immediate_risk} ->
-                    play_bot_resp(GameId, hd(Aliases), play_bot_random(Board, Width, Height, Run, Gravity, Periodic, Aliases, Options));
+                    play_bot_resp(GameId, hd(Aliases), play_bot_random(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options));
                 Error -> 
                     play_bot_resp(GameId, hd(Aliases), Error)
             end;
@@ -146,26 +153,26 @@ state(GameTypeId) ->
 
 random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
 
--spec play_bot_random(binary(), integer(), integer(), integer(), boolean(), boolean(), [egAlias()], Options::[egGameMove()]) -> {ok, Move::integer(), NewBoard::binary()} | {error, atom()}.
-play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, [Player|_], Options) ->
+-spec play_bot_random(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, Move::integer(), NewBoard::binary()} | {error, atom()}.
+play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Player|_], Options) ->
     egambo_tictac:put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player).
 
--spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
-play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _Aliases, []) -> {nok, no_immediate_win};  
-play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, Aliases, [I|Rest]) -> 
+-spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
+play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
+play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
-    case egambo_tictac:is_win(TestBoard, Width, Height, Run, Periodic, Aliases) of
+    case WinMod:win(TestBoard, Aliases) of
         true ->     {ok, Idx, TestBoard};
-        false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, Aliases, Rest)
+        false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
     end.
 
--spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), [egAlias()], Options::[egGameMove()]) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_risk} | {error, atom()}.
-play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _Aliases, []) -> {nok, no_immediate_risk};
-play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, [Player|Others], [I|Rest]) -> 
+-spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_risk} | {error, atom()}.
+play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
+play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-    case egambo_tictac:is_win(TestBoard, Width, Height, Run, Periodic, Others) of
+    case WinMod:win(TestBoard, Others) of
         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
-        false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, [Player|Others], Rest)
+        false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.
 
 put_options(Board, Width, Height, false) ->

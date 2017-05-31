@@ -19,7 +19,8 @@
                 , height     :: integer()   % board height >= 3
                 , run        :: integer()   % sucess run length
                 , gravity    :: boolean()   % do moves fall towards higher row numbers
-                , periodic   :: boolean()   % unbounded repeating board 
+                , periodic   :: boolean()   % unbounded repeating board
+                , winmod     :: egWinId()   % module name of win function
                 , players  = []             :: [egAccountId()]     % hd(players) is owner (proposer) of the game 
                 , bots     = []             :: [module()]          % internal bot player modules (undefined for external players)
                 , etime    = undefined      :: egTime()            % last status change time (so far), game end time (eventually)
@@ -57,14 +58,21 @@
         , result/1      % return current game state as a json-ready map:        GameId|#egGame{}
         , moves/1       % return game history as a json-ready map               GameId|#egGame{}
         , put/5         % changing one cell in the board (used by bots)
-        , is_win/6      % checking the board for a win (used by bots)
-        , is_tie/6      % checking the board for a tie (used by bots)
+        , is_win/3      % checking the board for a win (used by bots)
+        , is_tie/3      % checking the board for a tie (used by bots)
+        , win_module/4  % module name of win function implementation for particular board parameters
         ]).
 
 % debugging API
 -export([ state/1
         , print/1
         ]).
+
+
+win_module(Width, Height, Run, false) ->
+    list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
+win_module(Width, Height, Run, true) ->
+    list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p_p",[Width, Height, Run]))).
 
 -spec validate_params(egTicTacParams()) -> ok | egGameError().
 validate_params(#{width:=Width, height:=Height, run:=Run, gravity:=Gravity, periodic:=Periodic, obstacles:=Obstacles, jokers:=Jokers, aliases:=Aliases}) -> 
@@ -84,7 +92,14 @@ validate_params(#{width:=Width, height:=Height, run:=Run, gravity:=Gravity, peri
         is_boolean(Periodic)==false ->                              ?INVALID_BOARD_PARAMETER;
         (is_integer(Obstacles) or is_list(Obstacles)) ==false ->    ?INVALID_BOARD_PARAMETER;
         (is_integer(Jokers) or is_list(Jokers)) ==false ->          ?INVALID_BOARD_PARAMETER;
-        true ->                         ok
+        true ->
+            try  
+                case lists:member({win,2}, apply(win_module(Width, Height, Run, Periodic), module_info, [exports])) of
+                    true ->         ok;
+                    false ->        ?MISSING_WIN_FUNCTION
+                end
+            catch {error,undef} ->  ?MISSING_WIN_MODULE
+            end
     end;
 validate_params(_Params) ->                                         ?INVALID_PARAMETER_CONFIG.
     
@@ -105,14 +120,20 @@ db_to_state ( #egGameType{params=Params}
                      } 
             ) ->
     case validate_params(Params) of
-        ok ->   
+        ok ->
+            Width=maps:get(width, Params),
+            Height=maps:get(height, Params),
+            Run=maps:get(run, Params),
+            Gravity=maps:get(gravity, Params),
+            Periodic=maps:get(periodic, Params),   
             #state  { gid=GameId
                     , tid=GameType
-                    , width=maps:get(width, Params)
-                    , height=maps:get(height, Params)
-                    , run=maps:get(run, Params)
-                    , gravity=maps:get(gravity, Params)
-                    , periodic=maps:get(periodic, Params)
+                    , width=Width
+                    , height=Height
+                    , run=Run
+                    , gravity=Gravity
+                    , periodic=Periodic
+                    , winmod=win_module(Width, Height, Run, Periodic) 
                     , players=Players
                     , bots=Bots
                     , etime=EndTime
@@ -345,12 +366,12 @@ handle_call(moves, _From, #state{gid=GameId, etime=EndTime, status=Status, space
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, run=Run, periodic=Periodic, naliases=Aliases, nmovers=Movers, bots=Bots} = State) ->
+handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Movers, bots=Bots, winmod=WinMod} = State) ->
     NewAliases = rotate(Aliases),
     NewMovers = rotate(Movers),
     NewMoves = [{hd(Aliases), Idx}|State#state.moves],
     NewTime = egambo_game:eg_time(),
-    case is_win(NewBoard, Width, Height, Run, Periodic, Aliases) of
+    case is_win(WinMod, NewBoard, Aliases) of
         true ->
             NewState = State#state{ etime=NewTime
                                   , status=finished
@@ -370,7 +391,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, width=Width, height=Height, ru
             end,
             {stop, normal, NewState};
         false ->
-            case is_tie(NewBoard, Width, Height, Run, Periodic, Aliases) of
+            case is_tie(WinMod, NewBoard, Aliases) of
                 true ->
                     NewState = State#state{ etime=NewTime
                                           , status=finished
@@ -499,23 +520,20 @@ print_row(N, State) ->
 row_str(N,#state{width=Width, board=Board}) ->
     [lists:nth(N, ?ROWS),$|] ++ binary_to_list(binary:part(Board, (N-1) * Width, Width)) ++ "|".
 
--spec is_tie(Board::binary(), Width::integer(), Height::integer(), Run::integer(), Periodic::boolean(), Aliases::list()) -> boolean().
-is_tie(Board, Width, Height, Run, Periodic, [Player|Others]) ->  
+-spec is_win(egWinId(), Board::binary(), Aliases::list()) -> boolean().
+is_win(WinMod, Board, [Player|_]) -> 
+    WinMod:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Player).
+
+-spec is_tie(egWinId(), Board::binary(), Aliases::list()) -> boolean().
+is_tie(WinMod, Board, [Player|Others]) ->  
     case binary:match(Board, <<?AVAILABLE>>) of
         nomatch -> 
             true;
-        _ -> case is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Player:8>>, [global]), Width, Height, Run, Periodic, [Player|Others]) of
+        _ -> case is_win(WinMod, binary:replace(Board, <<?AVAILABLE:8>>, <<Player:8>>, [global]), [Player|Others]) of
                 true -> 
                     false;
                 false ->
                     Other = hd(Others),
-                    not is_win(binary:replace(Board, <<?AVAILABLE:8>>, <<Other:8>>, [global]), Width, Height, Run, Periodic, Others)
+                    not is_win(WinMod, binary:replace(Board, <<?AVAILABLE:8>>, <<Other:8>>, [global]), Others)
             end
     end.
-
--spec is_win(Board::binary(), Width::integer(), Height::integer(), Run::integer(), Periodic::boolean(), Aliases::list()) -> boolean().
-is_win(Board, Width, Height, Run, false, [Player|_]) -> 
-    egambo_tictac_win:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player);
-is_win(Board, Width, Height, Run, true, [Player|_]) -> 
-    egambo_tictac_wip:win(binary:replace(Board, <<?JOKER:8>>, <<Player:8>>, [global]), Width, Height, Run, Player).
-
