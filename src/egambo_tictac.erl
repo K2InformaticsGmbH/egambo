@@ -6,8 +6,6 @@
 -behavior(egambo_gen_game).     % callbacks used by player (mediated through egambo_game)
 -behavior(egambo_gen_engine).   % callbacks used by egambo_game (game manager)
 
--define(COLS, "abcdefgh").
--define(ROWS, "12345678").
 -define(AUTOSAVE_PERIOD, 3000). % msec between state save to db
 
 -define(NOT_YOUR_TURN, {error, not_your_turn}).
@@ -66,8 +64,21 @@
 % debugging API
 -export([ state/1
         , print/1
+        , sample/2
         ]).
 
+-safe([sample]).
+
+sample(Size, [{W,_}|_] = Moves) ->
+    L = length(Moves),                 % number of moves in game
+    I = random_idx0(L),                 % number of (end) moves (0..L0-1) to throw away
+    {_, Used} = lists:split(I, Moves),  % used moves
+    sample_board(W, I, binary:copy(<<32>>, Size), Used).
+
+sample_board(W, I, Board, [{P,M}]) -> list_to_binary(io_lib:format("~s;~1c;~p;~p;~1c",[Board,P,M,I,W]));
+sample_board(W, I, Board, [{P,M}|Moves]) -> 
+    {ok, _, NewBoard} = put(false, Board, 0, M, P),
+    sample_board(W, I, NewBoard, Moves).
 
 win_module(Width, Height, Run, false) ->
     list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
@@ -83,9 +94,9 @@ validate_params(#{width:=Width, height:=Height, run:=Run, gravity:=Gravity, peri
         is_integer(hd(Aliases)) == false ->                         ?INVALID_ALIAS_PARAMETER;
         is_integer(hd(tl(Aliases))) == false ->                     ?INVALID_ALIAS_PARAMETER;
         is_integer(Width)==false ->                                 ?INVALID_WIDTH_PARAMETER;
-        (Width<3) or (Width>8) ->                                   ?INVALID_WIDTH_PARAMETER;
+        (Width<3) or (Width>?MAX_DIMENSION) ->                      ?INVALID_WIDTH_PARAMETER;
         is_integer(Height)==false ->                                ?INVALID_HEIGHT_PARAMETER;
-        (Height<3) or (Height>8) ->                                 ?INVALID_HEIGHT_PARAMETER;
+        (Height<3) or (Height>?MAX_DIMENSION) ->                    ?INVALID_HEIGHT_PARAMETER;
         is_integer(Run)==false ->                                   ?INVALID_RUN_PARAMETER;
         (Run<3) or (Run>MaxDim) ->                                  ?INVALID_RUN_PARAMETER;
         is_boolean(Gravity)==false ->                               ?INVALID_BOARD_PARAMETER;
@@ -264,10 +275,10 @@ cell_to_integer(Cell, Width, Height) when is_atom(Cell) ->
     C0 = hd(?COLS),
     R0 = hd(?ROWS),
     case atom_to_list(Cell) of
-        [C] when C>=C0,C<C0+Width -> C-C0;
-        [C,R] when C>=C0,C<C0+Width,R>=R0,R<R0+Height -> C-C0+Width*(R-R0);
+        [C] when C>=C0, C<C0+Width -> C-C0;
+        [C,R] when C>=C0, C<C0+Width, R>=R0, R<R0+Height -> C-C0+Width*(R-R0);
         _ -> ?INVALID_CELL
-    end. 
+    end.
 
 cells_to_integer_list(Width, Height, Cells) -> 
     cells_to_integer_list(Width, Height, Cells, []). 

@@ -5,7 +5,10 @@
 
 -define(OBSTACLE, $$).
 -define(JOKER, $*).
--define(AVAILABLE, 32).         % spac
+-define(AVAILABLE, 32).         		% space
+-define(MAX_DIMENSION, 19).     		% large GO board
+-define(COLS, "abcdefghijklmnopqrs").	% large GO board
+-define(ROWS, "ABCDEFGHIJKLMNOPQRS").	% large GO board
 
 -define(INVALID_CELL, {error, invalid_cell}).
 -define(INVALID_BOT, {error, invalid_bot}).
