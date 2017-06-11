@@ -64,21 +64,11 @@
 % debugging API
 -export([ state/1
         , print/1
-        , sample/2
         ]).
 
--safe([sample]).
-
-sample(Size, [{W,_}|_] = Moves) ->
-    L = length(Moves),                 % number of moves in game
-    I = random_idx0(L),                 % number of (end) moves (0..L0-1) to throw away
-    {_, Used} = lists:split(I, Moves),  % used moves
-    sample_board(W, I, binary:copy(<<32>>, Size), Used).
-
-sample_board(W, I, Board, [{P,M}]) -> list_to_binary(io_lib:format("~s;~1c;~p;~p;~1c",[Board,P,M,I,W]));
-sample_board(W, I, Board, [{P,M}|Moves]) -> 
-    {ok, _, NewBoard} = put(false, Board, 0, M, P),
-    sample_board(W, I, NewBoard, Moves).
+-export([ norm_aliases/3    % normalize board to initial alias order (simplifies bot playing)
+        , sample/5          %% sample one random move out of a finished game
+        ]).
 
 win_module(Width, Height, Run, false) ->
     list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
@@ -286,6 +276,51 @@ cells_to_integer_list(Width, Height, Cells) ->
 cells_to_integer_list(_Width, _Height, [], Acc) -> lists:usort(Acc);
 cells_to_integer_list(Width, Height, [Cell|Rest], Acc) -> 
     cells_to_integer_list(Width, Height, Rest, [cell_to_integer(Cell, Width, Height)|Acc]).
+
+% External helper functions
+
+-spec sample(binary(), [egAlias()], [egGameMove()], [egAlias()], [egScore()]) -> list().
+%% sample one random move out of a finished game, aliases and scores normalized to initial move order
+%% input:
+%% Space::binary() game board before the first move, often all spaces, sometimes with jokers $* or obstacles $$
+%% IAliases::[integer()] initial aliases, list of integers, often [88,79] = [$X,$O] = "XO", asc(X) being the first player alias 
+%% Moves::[egGameMove()] reversed list of moves for whole game (first move is last element of the list)
+%% FAliases::[integer()] final aliases, element positions matching FScores  
+%% FScores::[float()] final scores, list of floats, positions matching FAliases 
+%% output (as a list):
+%% Board::string() board before the move, normalized to player hd(IAliases) playing the move
+%% Players::string() players before the move hd(Players)=PlayerDoingTheMove (normally called $X)
+%% Move::integer()  move played (index into board)
+%% Scores::[float()] score of players after finishing the game hd(Scores)=ScoreOfPlayerDoingTheMove
+%% MTE::integer() moves to end, number of moves played from this move to the end of the game, 0 if this move is the winning one
+sample(Space, IAliases, Moves, FAliases, FScores) ->
+    L = length(Moves),                                  % number of moves in this game
+    MTE = random_idx0(L),                               % number of (end) moves (0..L-1) to throw away
+    {_, UsedMoves} = lists:split(MTE, Moves),             % used moves to construct the board (others thrown away)
+    sample_board(Space, IAliases, lists:reverse(UsedMoves), FAliases, FScores, MTE).
+
+sample_board(Board, [P|IAliases], [{P,Move}], [P|_], FScores, MTE) -> 
+    [binary_to_list(Board), [P|IAliases], Move, FScores, MTE];
+sample_board(Board, [P|IAliases], [{P,Move}], FAliases, FScores, MTE) -> 
+    sample_board(Board, [P|IAliases], [{P,Move}], rotate(FAliases), rotate(FScores), MTE);
+sample_board(Board, [I,P|_] = IAliases, [{P,Move}], FAliases, FScores, MTE) ->
+    RotatedBoard = norm_aliases(Board, rotate(IAliases), IAliases), 
+    sample_board(RotatedBoard, IAliases, [{I,Move}], FAliases, FScores, MTE);
+sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) -> 
+    {ok, _, NewBoard} = put(false, Board, 0, Move, P),
+    sample_board(NewBoard, IAliases, Moves, FAliases, FScores, MTE).
+
+-spec norm_aliases(binary(), [egAlias()], [egAlias()]) -> binary().
+%% transform a tictac board by swapping player aliases to a given next player
+%% used to prepare th board for bots which prefer to always play as X
+%% can also be used to transform the returned NewBoard back to the real player alias
+norm_aliases(Board, Aliases, Aliases) -> Board;
+norm_aliases(Board, FromAliases, ToAliases) -> 
+    list_to_binary([flip(P, FromAliases, ToAliases) || P <- binary_to_list(Board)]).
+
+flip(P, [], []) -> P;
+flip(P, [P|_], [I|_]) -> I;
+flip(P, [_|FromAliases], [_|ToAliases]) -> flip(P, FromAliases, ToAliases).
 
 rotate([H|T]) -> T ++ [H].
 

@@ -42,7 +42,14 @@
 
 -define(DEFAULT_ROLES, [
   {ddRole,system,[egambo,dderl],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
-, {ddRole,egambo,[],[{eval_mfa,egambo_game,create},{eval_mfa,egambo_game,start},{eval_mfa,egambo_game,cancel},{eval_mfa,egambo_game,play},{eval_mfa,egambo_game,result},{eval_mfa,egambo_game,moves}],[]}
+, {ddRole,egambo,[],[{eval_mfa,egambo_game,create}
+                    ,{eval_mfa,egambo_game,start}
+                    ,{eval_mfa,egambo_game,cancel}
+                    ,{eval_mfa,egambo_game,play}
+                    ,{eval_mfa,egambo_game,result}
+                    ,{eval_mfa,egambo_game,moves}
+                    ,{eval_mfa,egambo_game,sample}
+                    ],[]}
 , {ddRole,dderl,[],[{dderl,restart},{dderl,conn,local,use},{dderl,conn,{owner,system},use},{dderl,conn,manage}],[]}
 , {ddRole,1,[],[],[]}
 , {ddRole,2,[],[],[]}
@@ -92,7 +99,7 @@
         , play_bot/5        % trigger a bot to play one move (async)
         ]).
 
--safe([create, start, cancel, accept, play, result, moves, time]).
+-safe([create, start, cancel, accept, play, result, moves, time, sample]).
 
 %% stateful game management functions (run through gen_server for serializability)
 
@@ -331,6 +338,7 @@ engine_call(GameId, Command) ->
     end.    
 
 % Internal helper functions
+
 prepare(#egGame{tid=GameType} = Game) ->
     case read_type(GameType) of
         #egGameType{engine=Engine} = Type ->    Engine:prepare(Type, Game);
