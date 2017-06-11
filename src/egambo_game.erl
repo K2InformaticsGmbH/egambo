@@ -25,12 +25,19 @@
 -define(DEFAULT_GAME_CATEGORIES, [ {egGameCategory,<<"tictac_challenge">>,<<"Tic Tac Challenge">>,<<"Two players alternate in placing their stones on a square board. A minimum number of consecutive stones in horizontal, vertical or diagonal direction wins. ">>}
                                  ]).
 -define(DEFAULT_GAME_TYPES, [
-  {egGameType,<<"tic_tac_toe_p">>,<<"3x3:3 Tic-Tac-Toe periodic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => true,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe on a periodic Board">>}
-, {egGameType,<<"tic_tac_toe_g">>,<<"3x3:3 Tic-Tac-Toe with gravity">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe with Gravity ">>}
-, {egGameType,<<"gomoku_8">>,<<"8x8:5 Gomoku small ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 8,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 8},undefined,2,<<"Small Board Gomoku on 8x8 ">>}
-, {egGameType,<<"tic_tac_toe">>,<<"3x3:3 Tic-Tac-Toe classic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe classic ">>}
+  {egGameType,<<"connect_7_2jjo">>,<<"8x8:7 Connect 5 2 jokers 1 block">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 8,jokers => 2,obstacles => 1,periodic => false,run => 7,width => 8},undefined,2,<<"Connect 5 on 8x8 with jokers and block ">>}
 , {egGameType,<<"connect_four">>,<<"7x6:4g Connect Four classic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 6,jokers => 0,obstacles => 0,periodic => false,run => 4,width => 7},undefined,2,<<"Classic Connect Four (also Captain's mistress) ">>}
+, {egGameType,<<"gomoku_13">>,<<"13x13:5 Gomoku small ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 13,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 13},undefined,2,<<"Small Board Gomoku on 13x13">>}
+, {egGameType,<<"gomoku_15">>,<<"15x15:5 Gomoku medium ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 15,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 15},undefined,2,<<"Medium Board Gomoku on 15x15">>}
+, {egGameType,<<"gomoku_15_jjoo">>,<<"15x15:5 Gomoku medium 2 jokers 2 obstacles">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 15,jokers => 2,obstacles => 2,periodic => false,run => 5,width => 15},undefined,2,<<"Medium Board Gomoku on 15x15 2 jokers to obstacles">>}
+, {egGameType,<<"gomoku_19">>,<<"19x19:5 Gomoku large ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 19,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 19},undefined,2,<<"Large Board Gomoku on 18x18">>}
+, {egGameType,<<"gomoku_8">>,<<"8x8:5 Gomoku tiny ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 8,jokers => 0,obstacles => 0,periodic => false,run => 5,width => 8},undefined,2,<<"Tiny Board Gomoku on 8x8 ">>}
+, {egGameType,<<"gomoku_8_p">>,<<"8x8:5 Gomoku small periodic ">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 8,jokers => 0,obstacles => 0,periodic => true,run => 5,width => 8},undefined,2,<<"Small Board Gomoku on 8x8 periodic">>}
+, {egGameType,<<"tic_tac_toe">>,<<"3x3:3 Tic-Tac-Toe classic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe classic ">>}
+, {egGameType,<<"tic_tac_toe_443">>,<<"4x4:3 Tic-Tac-Toe">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 4,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 4},undefined,1,<<"Tic-Tac-Toe-443 classic ">>}
 , {egGameType,<<"tic_tac_toe_443_oj">>,<<"4x4:3 Tic-Tac-Toe 1 obstacle 1 joker">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 4,jokers => 1,obstacles => 1,periodic => false,run => 3,width => 4},undefined,1,<<"Tic-Tac-Toe 4x4:3 with obstacle and joker">>}
+, {egGameType,<<"tic_tac_toe_g">>,<<"3x3:3 Tic-Tac-Toe with gravity">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => true,height => 3,jokers => 0,obstacles => 0,periodic => false,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe with Gravity ">>}
+, {egGameType,<<"tic_tac_toe_p">>,<<"3x3:3 Tic-Tac-Toe periodic">>,<<"tictac_challenge">>,egambo_tictac,2,#{aliases => "XO",gravity => false,height => 3,jokers => 0,obstacles => 0,periodic => true,run => 3,width => 3},undefined,1,<<"Tic-Tac-Toe on a periodic Board">>}
 ]).
 
 -define(DEFAULT_ACCOUNTS, [
@@ -55,6 +62,14 @@
 , {ddRole,2,[],[],[]}
 , {ddRole,3,[system],[],[]}
 , {ddRole,4,[system],[],[]}
+]).
+
+-define(DEFAULT_VIEWS, [
+
+]).
+
+-define(DEFAULT_CMDS, [
+
 ]).
 
 -record(state, {}).

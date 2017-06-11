@@ -161,7 +161,7 @@ play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Playe
 play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
 play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
-    case WinMod:win(TestBoard, Aliases) of
+    case egambo_tictac:is_win(WinMod, TestBoard, Aliases) of
         true ->     {ok, Idx, TestBoard};
         false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
     end.
@@ -170,7 +170,7 @@ play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Ali
 play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
 play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-    case WinMod:win(TestBoard, Others) of
+    case egambo_tictac:is_win(WinMod, TestBoard, Others) of
         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.
