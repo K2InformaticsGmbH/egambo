@@ -51,7 +51,7 @@
 
 % egambo_gen_game behavior callbacks (player originating requests)
 -export([ play/2        % play one move in the name of the next player:         GameId, Cell
-        , play/3        % play one move for the given alias:                    GameId, Cell, Alias
+        , play/3        % play one move for the given AccountId:                GameId, Cell, AccountId
         , play/4        % play one move for given alis and AccountId:           GameId, Cell|Command, Alias, AccountId
         , result/1      % return current game state as a json-ready map:        GameId|#egGame{}
         , moves/1       % return game history as a json-ready map               GameId|#egGame{}
@@ -249,7 +249,7 @@ print(GameId) ->
 
 play(GameId, Cell) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell}). 
 
-play(GameId, Cell, Alias) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell, player_to_integer(Alias)}). 
+play(GameId, Cell, AccountId) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell, AccountId}). 
 
 play(GameId, Cell, Alias, MyAccountId) -> gen_server:call(?ENGINE_GID(GameId), {play, Cell, player_to_integer(Alias), MyAccountId}). 
 
@@ -389,7 +389,7 @@ handle_call({play, _, _, _}, _From, #state{status=Status} = State) when Status /
     {reply, ?NOT_PLAYING, State};
 handle_call({play, Cell}, From, #state{naliases=[Player|_], nmovers=[AccountId|_]} = State) ->
     handle_call({play, Cell, Player, AccountId}, From, State);
-handle_call({play, Cell, Player}, From, #state{naliases=[Player|_], nmovers=[AccountId|_]} = State) ->
+handle_call({play, Cell, AccountId}, From, #state{naliases=[Player|_], nmovers=[AccountId|_]} = State) ->
     handle_call({play, Cell, Player, AccountId}, From, State);
 handle_call({play, Cell, Player, AccountId} ,_From, #state{naliases=[Player|_], nmovers=[AccountId|_]} = State) ->
     #state{ width=Width, height=Height, gravity=Gravity, board=Board} = State,
