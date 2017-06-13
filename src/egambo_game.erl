@@ -423,7 +423,12 @@ engine_call(GameId, Command) ->
                     catch 
                         _:Err -> Err
                     end; 
-                Error ->    Error
+                {error, {error, Error}} ->    
+                  {error, Error};
+                {error,{{error,Error}, Extra}} ->
+                  {error, Error, Extra};
+                Error -> 
+                  Error
             end
     end.    
 
@@ -455,6 +460,7 @@ init(_) ->
         insert_default(?DEFAULT_ROLES),
         insert_default(?DEFAULT_CMDS),
         insert_default(?DEFAULT_VIEWS),
+        imem_snap:suspend_snap_loop(),
         process_flag(trap_exit, true),
         {ok,#state{}}
     catch
