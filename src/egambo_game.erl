@@ -376,7 +376,9 @@ result(GameId) ->
                     end;   
                 Error ->
                     Error
-            end  
+            end;
+        Class:Reason ->
+            {error, Class, Reason}             
     end.
 
 -spec moves(egGameId()) -> egGameMoves() | egGameError().

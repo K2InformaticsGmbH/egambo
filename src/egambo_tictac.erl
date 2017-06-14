@@ -228,10 +228,15 @@ resume(GameId) ->
 stop(GameId) ->
     supervisor:terminate_child(egambo_sup, ?ENGINE_ID(GameId)).
 
-result( #state{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
-    #{id=>GameId, etime=>?EG_SEC(EndTime), status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
-result( #egGame{gid=GameId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
-    #{id=>GameId, etime=>?EG_SEC(EndTime), status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
+result( #state{gid=GameId, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
+    #{id=>GameId, etime=>?EG_SEC(EndTime), width=>Width, height=>Height, run=>Run, gravity=>Gravity, periodic=>Periodic, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
+result( #egGame{gid=GameId, tid=GameTypeId, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
+    case egambo_game:read_type(GameTypeId) of
+        #egGameType{params=#{width:=Width, height:=Height, run:=Run, gravity:=Gravity, periodic:=Periodic}} ->
+            #{id=>GameId, etime=>?EG_SEC(EndTime), width=>Width, height=>Height, run=>Run, gravity=>Gravity, periodic=>Periodic, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
+        Error ->
+            Error
+    end;   
 result(GameId) -> gen_server:call(?ENGINE_GID(GameId), result).
 
 moves( #egGame{gid=GameId, status=Status, etime=EndTime, space=Space, moves=Moves}) ->
@@ -405,8 +410,8 @@ handle_call({play, _, _}, _From, State) ->
     {reply, ?NOT_YOUR_TURN, State};
 handle_call({play, _, _, _}, _From, State) ->
     {reply, ?NOT_YOUR_TURN, State};
-handle_call(result, _From, #state{gid=GameId, etime=EndTime, status=Status, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores} = State) ->  
-    {reply, #{id=>GameId, etime=>EndTime, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores}, State};
+handle_call(result, _From, #state{gid=GameId, etime=EndTime, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, status=Status, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores} = State) ->  
+    {reply, #{id=>GameId, etime=>EndTime, width=>Width, height=>Height, run=>Run, gravity=>Gravity, periodic=>Periodic, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores}, State};
 handle_call(moves, _From, #state{gid=GameId, etime=EndTime, status=Status, space=Space, moves=Moves} = State) ->  
     {reply, #{id=>GameId, etime=>EndTime, status=>Status, space=>Space, moves=>lists:reverse(Moves)}, State};
 handle_call(stop, _From, State) ->
