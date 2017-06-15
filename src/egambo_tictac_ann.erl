@@ -5,6 +5,22 @@
 -behavior(gen_server).          % callbacks provided by (bot) players
 %-behavior(egambo_gen_player).   % callbacks provided by (bot) players
 
+-record(egTicTacAnn, { id         :: {egBotId(), egGameTypeId()}
+                     , version = <<>>   :: binary()    % network version name
+                     , info     = <<>>  :: binary()    % network description / res
+                     , time = undefined :: ddTimeUID() % save time
+                     , layers = []      :: list()      % number of layers and neurons per layer
+                     , weights = []     :: list()      % neuron weights
+                     }).
+
+-define(egTicTacAnn, [ tuple
+                     , binstr
+                     , binstr
+                     , list
+                     , list
+                     ]).
+% rd(egTicTacAnn, {id=, version=, info=, time= layers=, weights=}).
+
 -record(state,  { bid        :: egBotId()       % bot id (= module name)
                 , tid        :: egGameTypeId()  % game type id
                 , engine     :: egEngine()      % game engine (rule engine)
@@ -17,12 +33,14 @@
                 , players=2  :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
                 , layers=[]  :: [integer()]     % neuron count per  layer
-                , rate=0.1   :: float()         % default learning rate
+                , rate=0.05  :: float()         % default learning rate
                 , epochs=10  :: integer()       % default learning epochs
                 , error=0.001 :: float()        % default learning error
                 , network  :: undefined | pid() % network root process
-                , gid        :: egGameId()      % game id of current move
-                , board= <<>> :: binary()       % current board (game state) before next move
+                , version= <<>> :: binary()       % network version name
+                , info= <<>> :: binary()       % network info
+                , gid=0      :: egGameId()
+                , board= <<>> :: binary()  
                 }).
 
 % gen_server behavior callback exports
@@ -49,6 +67,8 @@
         , learn_epochs/4
         , learn_until/4
         , save/1
+        , save/2
+        , save/3
         ]).
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
@@ -91,6 +111,12 @@ state(GameTypeId) ->
 save(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), save). 
 
+save(GameTypeId, Version) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {save, Version}). 
+
+save(GameTypeId, Version, Info) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {save, Version, Info}). 
+
 start_learning(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), start_learning). 
 
@@ -99,14 +125,20 @@ start_playing(GameTypeId) ->
 
 init([GameTypeId]) ->
     Result = try
+        imem_meta:init_create_table(egTicTacAnn, {record_info(fields, egTicTacAnn), ?egTicTacAnn, #egTicTacAnn{}}, [], system),  
         #egGameType{engine=Engine, players=Players, params=Params} = egambo_game:read_type(GameTypeId),
         Width=maps:get(width, Params),
         Height=maps:get(height, Params),
         Run=maps:get(run, Params),
         Gravity=maps:get(gravity, Params),
         Periodic=maps:get(periodic, Params),
-        Layers=[Width*Height+1|[Width*Height || _ <- lists:seq(2, Width)]],
-        Network=ann:create_neural_network(Layers),
+        {Layers, Network, Status, Version, Info} = case imem_meta:read(egTicTacAnn, ?BOT_ID(?MODULE, GameTypeId)) of
+            [] ->
+                L = [Width*Height|[Width*Height || _ <- lists:seq(2, Width)]],  
+                {L, ann:create_neural_network(L),learning, <<>>, <<>>};
+            [#egTicTacAnn{layers=L, weights=W, version=V, info=I}] ->
+                {L, ann:create_neural_network(L, W), playing, V, I}
+        end,
         State = #state{ bid=?MODULE 
                       , tid=GameTypeId
                       , engine=Engine
@@ -117,8 +149,10 @@ init([GameTypeId]) ->
                       , periodic=Periodic
                       , winmod=egambo_tictac:win_module(Width, Height, Run, Periodic)
                       , players=Players
-                      , status=learning
+                      , status=Status
                       , layers=Layers
+                      , version=Version
+                      , info=Info
                       , network=Network
                       },
         process_flag(trap_exit, true),
@@ -190,8 +224,15 @@ handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
 handle_call(start_playing, _From, State) ->
     {reply, ok, State#state{status=playing}};
-handle_call(save, _From, State) ->
-    {reply, ?egGameNotImplemented, State};
+handle_call(save, _From, #state{version=Version, info=Info} = State) ->
+    handle_call({save, Version, Info}, _From, State);
+handle_call({save, Version}, _From, #state{info=Info} = State) ->
+    handle_call({save, Version, Info}, _From, State);
+handle_call({save, Version, Info}, _From, #state{tid=GameTypeId, layers=Layers, network=Network} = State) ->
+    Network = Network, 
+    Weights = [], % Todo: ask Network
+    imem_meta:write(egTicTacAnn, #egTicTacAnn{id=?BOT_ID(?MODULE, GameTypeId) , version=Version, info=Info, layers=Layers, weights=Weights}),
+    {reply, ok, State};
 handle_call(state, _From, State) ->
     {reply, State, State};
 handle_call(stop, _From, State) ->
