@@ -134,10 +134,10 @@ init([GameTypeId]) ->
         Periodic=maps:get(periodic, Params),
         {Layers, Network, Status, Version, Info} = case imem_meta:read(egTicTacAnn, ?BOT_ID(?MODULE, GameTypeId)) of
             [] ->
-                L = [Width*Height|[Width*Height || _ <- lists:seq(2, Width)]],  
+                L = layer_default(Width, Height, Run, Gravity, Periodic),  
                 {L, ann:create_neural_network(L),learning, <<>>, <<>>};
             [#egTicTacAnn{layers=L, weights=W, version=V, info=I}] ->
-                {L, ann:create_neural_network(L, W), playing, V, I}
+                {L, ann:create_neural_network(L, lists:flatten(W)), playing, V, I}
         end,
         State = #state{ bid=?MODULE 
                       , tid=GameTypeId
@@ -161,6 +161,11 @@ init([GameTypeId]) ->
         _Class:Reason -> {stop, {Reason,erlang:get_stacktrace()}} 
     end,
     Result.
+
+layer_default(3=Width, Height, _Run, _Gravity, _Periodic) ->
+    [Width*Height|[Width*Height || _ <- lists:seq(1, Width)]];
+layer_default(Width, Height, _Run, _Gravity, _Periodic) ->
+    [Width*Height|[Width*Height || _ <- lists:seq(2, Width)]].
 
 start_link(GameTypeId)  ->
     gen_server:start_link(?BOT_GID(?MODULE, GameTypeId), ?MODULE, [GameTypeId], []).
@@ -201,9 +206,11 @@ handle_cast({play_bot_req, GameId, Board, Aliases}, #state{ width=Width, height=
     end;
 handle_cast({learn_until, Tolerance, Rate, TrainingSet}, #state{network=Network, status=learning} = State) ->
     Network ! {learn_until, Tolerance, Rate, TrainingSet},
+    ann:get_weights(Network), %% used to block the Network
     {noreply, State};
 handle_cast({learn_epochs, Epochs, Rate, TrainingSet}, #state{network=Network, status=learning} = State) ->
     Network ! {learn_epochs, Epochs, Rate, TrainingSet},
+    ann:get_weights(Network), %% used to block the Network
     {noreply, State};
 handle_cast(Request, State) -> 
     ?Info("Unsolicited handle_cast in ~p : ~p",[?MODULE, Request]),
@@ -229,9 +236,7 @@ handle_call(save, _From, #state{version=Version, info=Info} = State) ->
 handle_call({save, Version}, _From, #state{info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version, Info}, _From, #state{tid=GameTypeId, layers=Layers, network=Network} = State) ->
-    Network = Network, 
-    Weights = [], % Todo: ask Network
-    imem_meta:write(egTicTacAnn, #egTicTacAnn{id=?BOT_ID(?MODULE, GameTypeId) , version=Version, info=Info, layers=Layers, weights=Weights}),
+    imem_meta:write(egTicTacAnn, #egTicTacAnn{id=?BOT_ID(?MODULE, GameTypeId) , version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
     {reply, ok, State};
 handle_call(state, _From, State) ->
     {reply, State, State};

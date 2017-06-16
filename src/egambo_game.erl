@@ -315,12 +315,19 @@ read_bot(AccountId) ->
             undefined
     end.
 
--spec save_resume(#egGame{}) -> ok | egGameError().
-save_resume(#egGame{gid=GameId, tid=GameType} = Game) ->
+-spec start_game(#egGame{}) -> ok | egGameError().
+start_game(#egGame{gid=GameId, tid=GameType, bots=Bots, stime=STime} = Game) ->
     write_game(Game), 
     case read_type(GameType) of
-        #egGameType{engine=Engine} ->   Engine:resume(GameId);
-        Error ->                        Error
+        #egGameType{engine=Engine} ->
+          case Engine:resume(GameId) of
+              ok ->   notify(STime, GameId, start_success, Engine:result(Game), Bots),
+                      ok;   
+              Err ->  notify(STime, GameId, start_failure, Engine:result(Game), Bots),
+                      Err
+          end;
+        Error ->
+          Error
     end.   
 
 -spec resume(egGameId() | [egGameId()]) -> ok | egGameError().
@@ -520,7 +527,7 @@ handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when i
                 YourBot ->
                     case resume_bots(GameType, [MyBot, YourBot]) of
                         ok ->
-                            save_resume(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()})),
+                            start_game(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()})),
                             {reply, GameId, State};
                         Error -> 
                             {reply, Error, State}
@@ -541,7 +548,7 @@ handle_call({start, GameType, MyAccountId}, From, State) when is_binary(GameType
             #egGame{gid=GameId, bots=Bots} = Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             case resume_bots(GameType, Bots) of
                 ok ->
-                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
+                    start_game(prepare(Game#egGame{status=playing, stime=eg_time()})),
                     {reply, GameId, State};
                 Error ->
                     {reply, Error, State}
@@ -560,7 +567,7 @@ handle_call({start_any, GameType, MyAccountId}, From, State) when is_binary(Game
             Bots = [B, read_bot(MyAccountId)],
             case resume_bots(GameType, Bots) of
                 ok ->   
-                    save_resume(prepare(Game#egGame{players=[P, MyAccountId], bots=Bots, status=playing, stime=eg_time()})),
+                    start_game(prepare(Game#egGame{players=[P, MyAccountId], bots=Bots, status=playing, stime=eg_time()})),
                     {reply, Game#egGame.gid, State};
                 Error ->
                     {reply, Error, State}
@@ -580,7 +587,7 @@ handle_call({start, GameType, YourAccountId, MyAccountId}, From, State) when is_
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             case resume_bots(GameType, Game#egGame.bots) of
                 ok ->   
-                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})),
+                    start_game(prepare(Game#egGame{status=playing, stime=eg_time()})),
                     {reply, Game#egGame.gid, State};
                 Error ->
                     {reply, Error, State}
@@ -607,7 +614,7 @@ handle_call({accept, GameId, MyAccountId}, _From, State) when is_integer(GameId)
         [#egGame{status=forming, tid=GameType, players=[_, MyAccountId], bots=Bots} = Game] ->
             case resume_bots(GameType, Bots) of
                 ok ->   
-                    save_resume(prepare(Game#egGame{status=playing, stime=eg_time()})), 
+                    start_game(prepare(Game#egGame{status=playing, stime=eg_time()})), 
                     {reply, ok, State};
                 Error ->
                     {reply, Error, State}
@@ -620,7 +627,7 @@ handle_call({accept, GameId, MyAccountId}, _From, State) when is_integer(GameId)
             Bots = [Bot, read_bot(MyAccountId)],
             case resume_bots(GameType, Bots) of
                 ok ->
-                    save_resume(prepare(Game#egGame{ status=playing
+                    start_game(prepare(Game#egGame{ status=playing
                                                  , players=[Player, MyAccountId]
                                                  , bots=Bots
                                                  , stime=eg_time()
