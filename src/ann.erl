@@ -29,6 +29,15 @@ run_neuron(Main, Inputs, Outputs, Token) ->
     {status, Token} ->
       status_neuron(Inputs, Outputs, Token),
       run_neuron(Main, Inputs, Outputs, Token + 1);
+    
+    {layer_weights, ReplyPid} ->
+      W = layer_weights(lists:reverse(Outputs)),
+      ReplyPid ! {response_layer_weights, W},
+      run_neuron(Main, Inputs, Outputs, Token);
+    
+    {weights, ReplyPid} ->
+      ReplyPid ! {response_weight, [W || {_I, W} <- lists:reverse(Inputs)]},
+      run_neuron(Main, Inputs, Outputs, Token);
 
     {feed_forward, Token} ->
       fire_neuron(Inputs, Outputs, {feed_forward, Token}, Main, Token),
@@ -52,6 +61,13 @@ resend_status_neuron([], Outputs, Token) ->
                 end, Outputs);
 resend_status_neuron(_, _, _) -> ok.
 
+layer_weights([]) -> [];
+layer_weights([Out | Outputs]) ->
+  Out ! {weights, self()},
+  Weight = receive
+    {response_weight, W} -> W
+  end,
+  [Weight | layer_weights(Outputs)].
 
 % -- learning
 learn_neuron([], Outputs, LearningRate, Main, Token) ->
@@ -171,6 +187,13 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
                       N ! {status, Token}
                     end, InputLayer),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + 1);
+    {weights, ReplyPid} ->
+      Weights = lists:map(fun(N) -> 
+                      N ! {layer_weights, self()},
+                      receive {response_layer_weights, W} -> W end
+                    end, BiasNeurons),
+      ReplyPid ! {response_weights, Weights},
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token);
     {finish} ->
       exit(neural_network_shutdown);
     _ ->
@@ -184,6 +207,10 @@ predict(NN, Set) ->
               receive {predicted, Val} -> Val end,
               Val
             end, Set).
+
+get_weights(NN) ->
+    NN ! {weights, self()},
+    receive {response_weights, Weights} -> Weights end.
 
 learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet) ->
   Examples = length(TrainingSet),
@@ -287,7 +314,7 @@ modify_layers([L]) -> [L];
 modify_layers([L | Ls]) -> [L + 1 | modify_layers(Ls)].
 
 compute_neurons([]) -> 0;
-compute_neurons([L]) -> L;
+compute_neurons([_L]) -> 0;
 compute_neurons([L1, L2 | Ls]) -> (L1 + 1) * L2 + compute_neurons([L2 | Ls]).
 
 random_weigths(N) -> [rand:uniform() * 2.0 - 1.0 || _ <- lists:seq(1, N)].
