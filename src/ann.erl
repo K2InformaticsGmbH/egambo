@@ -162,32 +162,35 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
       Output = forward_pass(InputLayer, OutputLayer, BiasNeurons, Token, Input),
       io:format("Output: ~p~n", [Output]),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + 1);
-    {predict, Input, OutputPid} ->
+    {predict, Input, ReplyPid} ->
       Output = forward_pass(InputLayer, OutputLayer, BiasNeurons, Token, Input),
-      OutputPid ! {predicted, Output},
+      ReplyPid ! {predicted, Output},
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + 1);
     {compute_error, TrainingSet} ->
       Examples = length(TrainingSet),
       Rss =  forward_pass_examples(InputLayer, OutputLayer, BiasNeurons, Token, TrainingSet, Examples),
       io:format("RSS: ~p~n", [Rss]),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + Examples);
+    {compute_error, TrainingSet, ReplyPid} ->
+      Examples = length(TrainingSet),
+      Rss =  forward_pass_examples(InputLayer, OutputLayer, BiasNeurons, Token, TrainingSet, Examples),
+      ReplyPid ! {computed_error, Rss},
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + Examples);
     {learn_epochs, Epochs, LearningRate, TrainingSet} ->
       TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
       io:format("Done.~n"),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
-    {learn_until, RssEps, LearningRate, TrainingSet, ReplyPid} ->
-      TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
-      io:format("Done.~n"),
-      ReplyPid ! training_done,
-      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {learn_epochs, Epochs, LearningRate, TrainingSet, ReplyPid} ->
       TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
-      io:format("Done.~n"),
       ReplyPid ! training_done,
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {learn_until, RssEps, LearningRate, TrainingSet} ->
       TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
       io:format("Done.~n"),
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
+    {learn_until, RssEps, LearningRate, TrainingSet, ReplyPid} ->
+      TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
+      ReplyPid ! training_done,
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {status} ->
       lists:foreach(fun(N) -> 
