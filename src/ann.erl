@@ -175,6 +175,16 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
       TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
       io:format("Done.~n"),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
+    {learn_until, RssEps, LearningRate, TrainingSet, ReplyPid} ->
+      TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
+      io:format("Done.~n"),
+      ReplyPid ! training_done,
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
+    {learn_epochs, Epochs, LearningRate, TrainingSet, ReplyPid} ->
+      TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
+      io:format("Done.~n"),
+      ReplyPid ! training_done,
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {learn_until, RssEps, LearningRate, TrainingSet} ->
       TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
       io:format("Done.~n"),
