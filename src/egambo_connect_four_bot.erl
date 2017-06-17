@@ -28,10 +28,10 @@
         ,terminate/2
         ,code_change/3]).
 
-%-define(TRAIN_CHANNEL, <<"connect_four_training">>).
 -define(TRAIN_CHANNEL, <<"connect_four_training">>).
+%-define(TRAIN_CHANNEL, <<"c4_train_small">>).
 -define(NETWORK_CHANNEL, <<"connect_four_network">>).
--define(LEARNING_RATE, 0.005).
+-define(LEARNING_RATE, 0.05).
 
 -record(state, {
     id :: list(),
@@ -142,13 +142,17 @@ map_scores(Next, Scores) ->
     NormScores = [(S+1)/2 || S <- Scores],
     maps:from_list(lists:zip(Next, NormScores)).
 
--spec apply_move([integer()], integer()) -> [integer()].
+-spec apply_move([integer()], integer()) -> [integer()] | {error, binary()}.
 apply_move([], _) -> [];
 apply_move([0 | Rest], 0) ->
-    [1 | apply_move(Rest, -1)];
+    check_error(1, apply_move(Rest, -1));
 apply_move([S | Rest], Pos) when Pos =/= 0 ->
-    [S * -1 | apply_move(Rest, Pos-1)];
+    check_error(S * -1, apply_move(Rest, Pos-1));
 apply_move(_Board, _Pos) -> {error, <<"Invalid move, cell already used.">>}.
+
+-spec check_error(integer(), [integer()] | {error, binary()}) -> [integer()] | {error, binary()}.
+check_error(_I, {error, _} = Error) -> Error;
+check_error(I, L) -> [I | L].
 
 -spec train(list(), pid(), integer(), integer(), integer(), [integer()], integer())  -> tuple() | end_of_data.
 train(_Id, _NN, Batches, BatchSize, Epochs, FromKey, BatchCount) when BatchCount >= Batches ->
@@ -242,6 +246,7 @@ handle_call({move, GameId, Pos}, _From, #state{games = Games} = State) ->
             case apply_move(Board, Pos) of
                 {error, _} = Error -> {reply, Error, State};
                 NewBoard ->
+                    ?Info("The new board ~p", [NewBoard]),
                     {reply, ok, State#state{games = Games#{GameId => NewBoard}}}
             end
     end;
