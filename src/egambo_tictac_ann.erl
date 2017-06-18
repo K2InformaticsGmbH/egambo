@@ -5,21 +5,46 @@
 -behavior(gen_server).          % callbacks provided by (bot) players
 %-behavior(egambo_gen_player).   % callbacks provided by (bot) players
 
--record(egTicTacAnn, { id         :: {egBotId(), egGameTypeId()}
-                     , version = <<>>   :: binary()    % network version name
-                     , info     = <<>>  :: binary()    % network description / res
-                     , time = undefined :: ddTimeUID() % save time
-                     , layers = []      :: list()      % number of layers and neurons per layer
-                     , weights = []     :: list()      % neuron weights
-                     }).
+-define(ANN_MODEL, egTicTacAnnModel).       % Model Table Name (Layers, Weights)
+-define(ANN_TRAIN, egTicTacAnnTrain).       % Training Table Name
+-define(ANN_TEST,  egTicTacAnnTest).        % Test Table Name
 
--define(egTicTacAnn, [ tuple
-                     , binstr
-                     , binstr
-                     , list
-                     , list
-                     ]).
-% rd(egTicTacAnn, {id=, version=, info=, time= layers=, weights=}).
+-define(ANN_MODEL_OPTS, [{record_name, egTicTacAnnModel}]).        
+-define(ANN_TRAIN_OPTS, [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
+-define(ANN_TEST_OPTS,  [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
+
+-define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
+-define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
+
+-record(egTicTacAnnModel,   { tid               :: egGameTypeId()
+                            , version = <<>>    :: binary()    % network version name
+                            , info     = <<>>   :: binary()    % network description / res
+                            , time = undefined  :: ddTimeUID() % save time
+                            , layers = []       :: list()      % number of layers and neurons per layer
+                            , weights = []      :: list()      % neuron weights (including bias neurons)
+                            }).
+
+-define(egTicTacAnnModel,   [ binstr
+                            , binstr
+                            , binstr
+                            , timestamp
+                            , list
+                            , list
+                            ]).
+% rd(egTicTacAnnModel, {id=, version=, info=, time= layers=, weights=}).
+
+-record(egTicTacAnnSample,  { skey= {<<>>, 0}   :: {egGameTypeId(),any()}
+                            , qos=1             :: number()   % quality of sample (-1..+1)
+                            , input=[]          :: list()     % sample network input
+                            , output=[]         :: list()     % expected network output
+                            }).
+
+-define(egTicTacAnnSample,   [ tuple
+                            , number
+                            , list
+                            , list
+                            ]).
+% rd(egTicTacAnnSample, {skey=, qos=, input=, output=}).
 
 -record(state,  { bid        :: egBotId()       % bot id (= module name)
                 , tid        :: egGameTypeId()  % game type id
@@ -29,6 +54,7 @@
                 , run=3      :: integer()       % sucess run length
                 , gravity=false :: boolean()    % do moves fall towards higher row numbers
                 , periodic=false :: boolean()   % unbounded repeating board
+                , ialiases   :: [egAlias()]     % normalized player order
                 , winmod     :: egWinId()       % win function module
                 , players=2  :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
@@ -39,8 +65,6 @@
                 , network  :: undefined | pid() % network root process
                 , version= <<>> :: binary()       % network version name
                 , info= <<>> :: binary()       % network info
-                , gid=0      :: egGameId()
-                , board= <<>> :: binary()  
                 }).
 
 % gen_server behavior callback exports
@@ -64,14 +88,21 @@
 -export([ state/1
         , start_learning/1
         , start_playing/1
-        , learn_epochs/4
-        , learn_until/4
+        , train/7
+        , test/3
         , save/1
         , save/2
         , save/3
+        , ann_sample/3
+        , read_samples/6
         ]).
 
+% egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
+% egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20, 0.1, 0.05, 0.99, 1, 100).
+
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
+
+-safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, train, test]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -93,11 +124,32 @@ resume(GameTypeId) ->
         Error ->                        Error
     end.
 
-learn_epochs(GameTypeId, Epochs, Rate, TrainingView) ->
-    gen_server:cast(?BOT_GID(?MODULE, GameTypeId), {learn_epochs, Epochs, Rate, TrainingView}).
+train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) ->
+    train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, -1.0e100, 1).
 
-learn_until(GameTypeId, Tolerance, Rate, TrainingView) ->
-    gen_server:cast(?BOT_GID(?MODULE, GameTypeId), {learn_until, Tolerance, Rate, TrainingView}).
+train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, LastKey, BatchId) -> 
+    case read_samples(?ANN_TRAIN, GameTypeId, LastKey, BatchSize, QosMin, QosMax) of
+        {[], true} -> 
+            ok;
+        {L, true} ->
+            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            TrainingSet = [ {I, O} || {_, _, I, O} <- L],
+            gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity);
+        {L, false} ->
+            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            TrainingSet = [ {I, O} || {_, _, I, O} <- L],
+            gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity),
+            train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, element(2, hd(lists:last(L))), BatchId+1)
+    end.
+
+test(GameTypeId, QosMin, QosMax) ->
+    case read_samples(?ANN_TEST, GameTypeId, -1.0e100, 1000000, QosMin, QosMax) of
+        [[], true] -> 
+            ?ANN_NO_TEST_SAMPLES;
+        [L, _] ->
+            TestSet = [ {I, O} || {_, _, I, O} <- L],
+            gen_server:call(?BOT_GID(?MODULE, GameTypeId), {test, TestSet}, infinity)
+    end.
 
 -spec stop(egBotId()) -> ok | egGameError().
 stop(GameTypeId) ->
@@ -123,20 +175,39 @@ start_learning(GameTypeId) ->
 start_playing(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), start_playing). 
 
+read_samples(TableName, GameTypeId, LastKey, Limit, QosMin, QosMax) ->
+    MatchCond = [{'>', '$1', match_val({GameTypeId, LastKey})}
+                ,{'>', '$2', QosMin}
+                ,{'=<', '$2', QosMax}
+                ], 
+    MatchFunction = {#egTicTacAnnSample{skey='$1', qos='$2', input='$3', output='$4'}, MatchCond, ['$$']},
+    imem_meta:select(TableName, [MatchFunction], Limit).
+
+match_val(T) when is_tuple(T) -> {const,T};
+match_val(V) -> V.
+
+ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) -> 
+    F = fun(I) -> if I==Move -> 1; true -> 0 end end, 
+    Output = lists:map(F, lists:seq(0, length(Input)-1)),
+    #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=Score/(MTE+1), input=Input, output=Output}.
+
 init([GameTypeId]) ->
     Result = try
-        imem_meta:init_create_table(egTicTacAnn, {record_info(fields, egTicTacAnn), ?egTicTacAnn, #egTicTacAnn{}}, [], system),  
+        imem_meta:init_create_table(?ANN_MODEL, {record_info(fields, egTicTacAnnModel), ?egTicTacAnnModel, #egTicTacAnnModel{}}, ?ANN_MODEL_OPTS, system),  
+        imem_meta:init_create_table(?ANN_TRAIN, {record_info(fields, egTicTacAnnSample), ?egTicTacAnnSample, #egTicTacAnnSample{}}, ?ANN_TRAIN_OPTS, system),  
+        imem_meta:init_create_table(?ANN_TEST,  {record_info(fields, egTicTacAnnSample), ?egTicTacAnnSample, #egTicTacAnnSample{}}, ?ANN_TEST_OPTS, system),  
         #egGameType{engine=Engine, players=Players, params=Params} = egambo_game:read_type(GameTypeId),
         Width=maps:get(width, Params),
         Height=maps:get(height, Params),
         Run=maps:get(run, Params),
         Gravity=maps:get(gravity, Params),
         Periodic=maps:get(periodic, Params),
-        {Layers, Network, Status, Version, Info} = case imem_meta:read(egTicTacAnn, ?BOT_ID(?MODULE, GameTypeId)) of
+        Aliases=maps:get(aliases, Params), 
+        {Layers, Network, Status, Version, Info} = case imem_meta:read(?ANN_MODEL, GameTypeId) of
             [] ->
                 L = layer_default(Width, Height, Run, Gravity, Periodic),  
                 {L, ann:create_neural_network(L),learning, <<>>, <<>>};
-            [#egTicTacAnn{layers=L, weights=W, version=V, info=I}] ->
+            [#egTicTacAnnModel{layers=L, weights=W, version=V, info=I}] ->
                 {L, ann:create_neural_network(L, lists:flatten(W)), playing, V, I}
         end,
         State = #state{ bid=?MODULE 
@@ -147,6 +218,7 @@ init([GameTypeId]) ->
                       , run=Run
                       , gravity=Gravity
                       , periodic=Periodic
+                      , ialiases=Aliases
                       , winmod=egambo_tictac:win_module(Width, Height, Run, Periodic)
                       , players=Players
                       , status=Status
@@ -177,49 +249,38 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{status=Status} = State) when Status /= playing ->
     play_bot_resp(GameId, Player, ?BOT_NOT_PLAYING),
     {noreply, State};
-handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{gid=GameId} = State) when GameId /= undefined ->
-    play_bot_resp(GameId, Player, ?BOT_IS_BUSY),
-    {noreply, State};
-handle_cast({play_bot_req, GameId, Board, Aliases}, #state{ width=Width, height=Height, run=Run, network=Network
+handle_cast({play_bot_req, GameId, Board, NAliases}, #state{ width=Width, height=Height, run=Run, network=Network
                                                           , gravity=Gravity, periodic=Periodic, winmod=WinMod
+                                                          , ialiases=IAliases
                                                           } = State) -> 
     Options = put_options(Board, Width, Gravity),
-    case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options) of
+    case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
         {ok, Idx, NewBoard} ->              % win in this move detected
-            play_bot_resp(GameId, hd(Aliases), {ok, Idx, NewBoard}),
+            play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard}),
             {noreply, State}; 
         {nok, no_immediate_win} ->
-            case play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options) of
+            case play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
                 {ok, Idx, NewBoard} ->      % opponent's win in this move detected and taken
-                    play_bot_resp(GameId, hd(Aliases), {ok, Idx, NewBoard}),
+                    play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard}),
                     {noreply, State};
                 {nok, no_immediate_risk} ->
-                    play_bot_ann(Board, Aliases, Network),
-                    {noreply, State#state{gid=GameId, board=Board, players=Aliases}};
+                    case play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) of 
+                        {ok, Idx, NewBoard} ->
+                            play_bot_resp(GameId, Player, {ok, Idx, NewBoard}),
+                            {noreply, State}
+                    end;
                 Error -> 
-                    play_bot_resp(GameId, hd(Aliases), Error),
+                    play_bot_resp(GameId, hd(NAliases), Error),
                     {noreply, State}
             end;
         Error -> 
-            play_bot_resp(GameId, hd(Aliases), Error),
+            play_bot_resp(GameId, hd(NAliases), Error),
             {noreply, State}
     end;
-handle_cast({learn_until, Tolerance, Rate, TrainingSet}, #state{network=Network, status=learning} = State) ->
-    Network ! {learn_until, Tolerance, Rate, TrainingSet},
-    ann:get_weights(Network), %% used to block the Network
-    {noreply, State};
-handle_cast({learn_epochs, Epochs, Rate, TrainingSet}, #state{network=Network, status=learning} = State) ->
-    Network ! {learn_epochs, Epochs, Rate, TrainingSet},
-    ann:get_weights(Network), %% used to block the Network
-    {noreply, State};
 handle_cast(Request, State) -> 
     ?Info("Unsolicited handle_cast in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
 
-handle_info({predicted, Output}, #state{gid=GameId, board=Board, width=Width, gravity=Gravity, players=[Player|_] } = State) ->
-    BotMove = pick_output(Output, Board, Width, Gravity, Player),
-    play_bot_resp(GameId, Player, BotMove),
-    {noreply, State#state{gid=undefined}};    
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
@@ -231,30 +292,21 @@ handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
 handle_call(start_playing, _From, State) ->
     {reply, ok, State#state{status=playing}};
+handle_call({train, Epochs, ResErr, Rate, TrainingSet}, _From, #state{network=Network, status=learning} = State) ->
+    {reply, ann:train(Network, Epochs, ResErr, Rate, TrainingSet), State};
+handle_call({test, TestSet}, _From, #state{network=Network, status=learning} = State) ->
+    {reply, ann:compute_error(Network, TestSet), State};
 handle_call(save, _From, #state{version=Version, info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version}, _From, #state{info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version, Info}, _From, #state{tid=GameTypeId, layers=Layers, network=Network} = State) ->
-    imem_meta:write(egTicTacAnn, #egTicTacAnn{id=?BOT_ID(?MODULE, GameTypeId) , version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
+    imem_meta:write(?ANN_MODEL, #egTicTacAnnModel{tid=GameTypeId , version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
     {reply, ok, State};
 handle_call(state, _From, State) ->
     {reply, State, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
-
-pick_output(Output, Board, Width, Gravity, Player) ->
-    SortedOutput = lists:sort([{Gain,I} || {Gain,I} <- lists:zip(Output, lists:seq(0, length(Output)-1))]),   
-    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
-
-pick_output_sorted([], Board, Width, Gravity, Player) ->
-    ?Info("Random move played by ~p in ~p for board ~p",[Player, ?MODULE, Board]),
-    play_bot_random(Board, Width, Gravity, Player);
-pick_output_sorted([{_,I}|Outputs], Board, Width, Gravity, Player) ->
-    case egambo_tictac:put(Gravity, Board, Width, I, Player) of
-        {ok, Idx, NewBoard} ->  {ok, Idx, NewBoard};
-        _ ->                    pick_output_sorted(Outputs, Board, Width, Gravity, Player)
-    end.
 
 -spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
 play_bot_resp(GameId, Player, BotMove) -> 
@@ -269,16 +321,10 @@ send_to_engine(GameId, Message) ->
         exit:{badarg, {_, _}} -> ?Error("GameEngine ~p unreachable. Dropped message: ~p",[GameId, Message])
     end.
 
-random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
-
--spec play_bot_random(binary(), integer(), boolean(), egAlias()) -> {ok, Move::integer(), NewBoard::binary()} | {error, atom()}.
-play_bot_random(Board, Width, Gravity, Player) ->
-    Options = put_options(Board, Width, Gravity),
-    egambo_tictac:put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player).
-
--spec play_bot_ann(binary(), [egAlias()], pid()) -> ok | egGameError().
-play_bot_ann(Board, [Player|_], Network) ->
-    Network ! {predict, [Player|binary_to_list(Board)], self()}.
+put_options(Board, _Width, false) ->
+    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,size(Board)-1))]) -- [false];
+put_options(Board, Width, true) ->
+    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false].
 
 -spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
 play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
@@ -289,7 +335,7 @@ play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Ali
         false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
     end.
 
--spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, Move::integer(), NewBoard::binary()} | {nok, no_immediate_risk} | {error, atom()}.
+-spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_risk} | {error, atom()}.
 play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
 play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
@@ -298,7 +344,21 @@ play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, 
         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.
 
-put_options(Board, _Width, false) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,size(Board)-1))]) -- [false];
-put_options(Board, Width, true) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false].
+-spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid()) -> egBotMove().
+play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) ->
+    NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
+    Output = ann:predict(Network, [binary_to_list(NormBoard)]),
+    pick_output(Output, Board, Width, Gravity, Player).
+
+
+-spec pick_output(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
+pick_output(Output, Board, Width, Gravity, Player) ->
+    SortedOutput = lists:sort([{Gain,I} || {Gain,I} <- lists:zip(Output, lists:seq(0, length(Output)-1))]),   
+    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
+
+-spec pick_output_sorted(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
+pick_output_sorted([{_,I}|Outputs], Board, Width, Gravity, Player) ->
+    case egambo_tictac:put(Gravity, Board, Width, I, Player) of
+        {ok, Idx, NewBoard} ->  {ok, Idx, NewBoard};
+        _ ->                    pick_output_sorted(Outputs, Board, Width, Gravity, Player)
+    end.

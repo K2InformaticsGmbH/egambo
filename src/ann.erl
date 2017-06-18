@@ -192,6 +192,11 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
       TokenShift = learn_until(InputLayer, OutputLayer, BiasNeurons, Token, RssEps, LearningRate, TrainingSet),
       ReplyPid ! training_done,
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
+    {train, Epochs, _ResErr, LearningRate, TrainingSet, ReplyPid} ->
+      io:format("Start Training.~n"),
+      TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
+      ReplyPid ! training_done,
+      neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {status} ->
       lists:foreach(fun(N) -> 
                       N ! {status, Token}
@@ -213,6 +218,9 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token)
   end.
 
+predict(NN, [N|_]=Input) when is_number(N) ->
+    NN ! {predict, Input, self()},
+    receive {predicted, Val} -> Val end;
 predict(NN, Set) ->
   Self = self(),
   lists:map(fun(Ex) ->
@@ -224,6 +232,14 @@ predict(NN, Set) ->
 get_weights(NN) ->
     NN ! {weights, self()},
     receive {response_weights, Weights} -> Weights end.
+
+train(NN, Epochs, ResErr, LearningRate, TrainingSet) ->
+    NN ! {train, Epochs, ResErr, LearningRate, TrainingSet, self()},
+    receive training_done -> ok end.
+
+compute_error(NN, TrainingSet) ->
+    NN ! {compute_error, TrainingSet, self()},
+    receive {computed_error, Rss} -> Rss end.
 
 learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet) ->
   Examples = length(TrainingSet),

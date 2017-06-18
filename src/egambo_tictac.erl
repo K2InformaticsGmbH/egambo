@@ -304,20 +304,24 @@ sample(Space, IAliases, Moves, FAliases, FScores) ->
     {_, UsedMoves} = lists:split(MTE, Moves),             % used moves to construct the board (others thrown away)
     sample_board(Space, IAliases, lists:reverse(UsedMoves), FAliases, FScores, MTE).
 
-sample_board(Board, [P|IAliases], [{P,Move}], [P|_], FScores, MTE) -> 
-    [binary_to_list(Board), [P|IAliases], Move, FScores, MTE];
-sample_board(Board, [P|IAliases], [{P,Move}], FAliases, FScores, MTE) -> 
-    sample_board(Board, [P|IAliases], [{P,Move}], rotate(FAliases), rotate(FScores), MTE);
-sample_board(Board, [I,P|_] = IAliases, [{P,Move}], FAliases, FScores, MTE) ->
+sample_board(Board, [X|IAliases], [{X,Move}], [X|_], FScores, MTE) ->
+    % Player matches initial player and that player's final score 
+    [binary_to_list(Board), [X|IAliases], Move, FScores, MTE];
+sample_board(Board, [X|IAliases], [{X,Move}], FAliases, FScores, MTE) ->
+    % Player matches initial player but final score needs to be rotated 
+    sample_board(Board, [X|IAliases], [{X,Move}], rotate(FAliases), rotate(FScores), MTE);
+sample_board(Board, [X,O|_] = IAliases, [{O,Move}], FAliases, FScores, MTE) ->
+    % Player does not match initial player. Board normalisation needed.  
     RotatedBoard = norm_aliases(Board, rotate(IAliases), IAliases), 
-    sample_board(RotatedBoard, IAliases, [{I,Move}], FAliases, FScores, MTE);
-sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) -> 
+    sample_board(RotatedBoard, IAliases, [{X,Move}], rotate(FAliases), FScores, MTE);
+sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) ->
+    % One more move to aggregate into the board. 
     {ok, _, NewBoard} = put(false, Board, 0, Move, P),
     sample_board(NewBoard, IAliases, Moves, FAliases, FScores, MTE).
 
 -spec norm_aliases(binary(), [egAlias()], [egAlias()]) -> binary().
 %% transform a tictac board by swapping player aliases to a given next player
-%% used to prepare th board for bots which prefer to always play as X
+%% used to prepare th board for bots whinorm_aliases(Board, Aliases, Aliases) ch prefer to always play as X
 %% can also be used to transform the returned NewBoard back to the real player alias
 norm_aliases(Board, Aliases, Aliases) -> Board;
 norm_aliases(Board, FromAliases, ToAliases) -> 
