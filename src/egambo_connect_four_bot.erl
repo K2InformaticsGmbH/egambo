@@ -4,6 +4,10 @@
 
 -behavior(gen_server).
 
+% Bot callbacks
+-export([start_link/1
+        ,resume/1]).
+
 -export([process_games/0
         ,process_games/1
         ,new_game/1
@@ -33,16 +37,55 @@
 -define(NETWORK_CHANNEL, <<"connect_four_network">>).
 -define(LEARNING_RATE, 0.05).
 
+-define(NETWORK_NAME, "all_data_tf_500").
+-define(NETWORK_LAYERS, [42,128,256,72,1]).
+
 -record(state, {
     id :: list(),
     network :: pid(), 
     games = #{} :: map()
 }).
 
+%% Functions required by egambo_game for bots.
+-spec resume(egGameTypeId()) -> ok | egGameError().
+resume(GameTypeId) ->
+    ChildSpec = { ?BOT_ID(?MODULE, GameTypeId)                  % ChildId
+                , {?MODULE, start_link, [GameTypeId]}           % {M,F,A}
+                , permanent                                     % do restart automatically
+                , 1000                                          % Shutdown timeout
+                , worker                                        % Type
+                , [?MODULE]                                     % Modules
+                },
+    case supervisor:start_child(egambo_sup, ChildSpec) of
+        {ok,_} ->                       ok;
+        {ok,_,_} ->                     ok;
+        {error, already_present} ->     ok;
+        {error,{already_started,_}} ->  ok;
+        Error ->                        Error
+    end.
+
+start_link(GameTypeId)  ->
+    InitArgs = [?NETWORK_NAME, ?NETWORK_LAYERS],
+    gen_server:start_link(?BOT_GID(?MODULE, GameTypeId), ?MODULE, InitArgs, []).
+
+-spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
+play_bot_resp(GameId, Player, BotMove) -> 
+    send_to_engine(GameId, {play_bot_resp, Player, BotMove}).
+
+-spec send_to_engine(egGameId(), egBotMoveCmd()) -> ok.
+send_to_engine(GameId, Message) ->
+    try 
+        global:send(?ENGINE_ID(GameId), Message),
+        ok
+    catch 
+        exit:{badarg, {_, _}} -> ?Error("GameEngine ~p unreachable. Dropped message: ~p",[GameId, Message])
+    end.
+
+%% End bot functions
+
 -spec start(list()) -> {ok, pid()}.
 start(Name) when is_list(Name) ->
-    Layers = [42, 128, 36, 1],
-    start(Name, Layers).
+    start(Name, ?NETWORK_LAYERS).
 
 -spec start(list(), list()) -> {ok, pid()}.
 start(Name, Layers) ->
@@ -150,6 +193,20 @@ apply_move([S | Rest], Pos) when Pos =/= 0 ->
     check_error(S * -1, apply_move(Rest, Pos-1));
 apply_move(_Board, _Pos) -> {error, <<"Invalid move, cell already used.">>}.
 
+-spec transform_board(binary(), integer()) -> [integer()].
+transform_board(BoardBin, Alias) when is_binary(BoardBin)->
+    transform_board(binary_to_list(BoardBin), Alias);
+transform_board(Board, Alias) when is_list(Alias) ->
+    transform_board(Board, hd(string:to_upper(Alias)));
+transform_board([], _) -> [];
+transform_board([32 | RestBoard], BotId) ->
+    [0 | transform_board(RestBoard, BotId)];
+transform_board([BotId | RestBoard], BotId) ->
+    % -1 as the board is given from the opponent point of view.
+    [-1 | transform_board(RestBoard, BotId)];
+transform_board([_ | RestBoard], BotId) ->
+    [1 | transform_board(RestBoard, BotId)].
+
 -spec check_error(integer(), [integer()] | {error, binary()}) -> [integer()] | {error, binary()}.
 check_error(_I, {error, _} = Error) -> Error;
 check_error(I, L) -> [I | L].
@@ -194,6 +251,15 @@ empty_pos(Board, [Col | Rest], Offset) ->
         0 -> [Pos | empty_pos(Board, [35,28,21,14,7,0], Offset + 1)];
         _ -> empty_pos(Board, Rest, Offset)
     end.
+
+-spec suggest_moves_impl([integer()], pid()) -> {list(), integer()}.
+suggest_moves_impl(Board, NN) ->
+    Moves = empty_pos(Board, [35,28,21,14,7,0], 0),
+    NextBoards = [apply_move(Board, M) || M <- Moves],
+    Values = ann:predict(NN, NextBoards),
+    Suggested = lists:zip(Values, Moves),
+    {_, Best} = lists:max(Suggested),
+    {Suggested, Best}.
 
 -spec load_weights(list()) -> list().
 load_weights([_Name | Layers] = NetworkId) ->
@@ -254,10 +320,7 @@ handle_call({suggest_moves, GameId}, _From, #state{games = Games, network = NN} 
     case maps:get(GameId, Games, undefined) of
         undefined -> {reply, {error, <<"Game id not found">>}, State};
         Board ->
-            Moves = empty_pos(Board, [35,28,21,14,7,0], 0),
-            NextBoards = [apply_move(Board, M) || M <- Moves],
-            Values = ann:predict(NN, NextBoards),
-            {reply, lists:zip(Moves, Values), State}
+            {reply, suggest_moves_impl(Board, NN), State}
     end;
 handle_call({evaluate_position, Pos}, _From, #state{network = NN} = State) ->
     [[Result]] = ann:predict(NN, [Pos]),
@@ -269,6 +332,13 @@ handle_call(save, _From, #state{id = Id, network = NN} = State) ->
 handle_call({train, Batches, BatchSize, Epochs, FromKey}, _From, #state{id = Id, network = NN} = State) ->
     {reply, train(Id, NN, Batches, BatchSize, Epochs, FromKey, 0), State}.
 
+%% This game id is not the same as our internal game ids, maybe we should change name...
+handle_cast({play_bot_req, GameId, BoardBin, [Alias | _]}, #state{network = NN} = State) ->
+    Board = transform_board(BoardBin, Alias),
+    {_Sugested, Best} = suggest_moves_impl(Board, NN),
+    %% For some reason we need to give back the new board ...
+    play_bot_resp(GameId, Alias, egambo_tictac:put(true, BoardBin, 7, Best, Alias)),
+    {noreply, State};
 handle_cast(Request, State) -> 
     ?Info("Unsolicited handle_cast in ~p : ~p", [?MODULE, Request]),
     {noreply, State}.
