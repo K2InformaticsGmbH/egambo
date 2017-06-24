@@ -1,4 +1,4 @@
--module(egambo_tictac).
+c-module(egambo_tictac).
 
 -include("egambo_tictac.hrl").  % import tictac game structures 
 
@@ -473,7 +473,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                           , nscores=rotate(State#state.nscores)
                                           , moves=NewMoves
                                           },
-                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+                    egambo_game:notify(NewTime, GameId, status, result(NewState), Bots),
                     case length((Bots -- [undefined]) -- [undefined]) of
                         2 -> ok;
                         _ -> 

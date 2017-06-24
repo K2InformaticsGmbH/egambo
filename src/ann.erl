@@ -246,6 +246,7 @@ learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, 
   lists:foreach(fun(Epoch) ->
       learn_pass(InputLayer, OutputLayer, BiasNeurons, Token + Examples * Epoch * 2, LearningRate, TrainingSet, Examples),
       Rss = forward_pass_examples(InputLayer, OutputLayer, BiasNeurons, Token + Examples * (Epoch * 2 + 1), TrainingSet, Examples),
+      % io:format("Epoch ~p, loss: ~p, examples: ~p~n", [Epoch, Rss, Examples])
       io:format("Epoch ~p, loss: ~p, average: ~p~n", [Epoch, Rss, Rss / Examples])
     end, lists:seq(0, Epochs - 1)),
   Examples * Epochs * 2.
