@@ -1,4 +1,4 @@
-c-module(egambo_tictac).
+-module(egambo_tictac).
 
 -include("egambo_tictac.hrl").  % import tictac game structures 
 

@@ -98,13 +98,16 @@
         , ann_sample/3
         , read_samples/6
         , predict/2
+        , pick_output/5
         ]).
 
 % egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
 % egambo_tictac_ann:start_learning(<<"tic_tac_toe_443">>).
-% egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20    , 0.1   , 0.05, 0.49  , 1     , 150).
+% egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20    , 0.1   , 0.10, 0.0  , 1     , 150).
 % egambo_tictac_ann:train(GameTypeId           , Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) 
 % egambo_tictac_ann:save(<<"tic_tac_toe_443">> , <<"V0.1">>,<<"First Attempt for Learning">>). 
+% egambo_tictac_ann:stop(<<"tic_tac_toe_443">>).
+% egambo_tictac_ann:predict(<<"tic_tac_toe_443">>, ).
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
@@ -331,7 +334,7 @@ handle_call(save, _From, #state{version=Version, info=Info} = State) ->
 handle_call({save, Version}, _From, #state{info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version, Info}, _From, #state{tid=GameTypeId, layers=Layers, network=Network} = State) ->
-    imem_meta:write(?ANN_MODEL, #egTicTacAnnModel{tid=GameTypeId , version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
+    imem_meta:write(?ANN_MODEL, #egTicTacAnnModel{tid=GameTypeId , time=egambo_game:eg_time(), version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
     {reply, ok, State#state{version=Version, info=Info}};
 handle_call(state, _From, State) ->
     {reply, State, State};
@@ -376,15 +379,23 @@ play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, 
 
 -spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid()) -> egBotMove().
 play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) ->
+    % ?Info("play_bot_ann Board ~p ~p",[Board, NAliases]),
     NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
-    Output = ann:predict(Network, ann_norm_input([binary_to_list(NormBoard)])),
-    pick_output(Output, Board, Width, Gravity, Player).
+    % ?Info("play_bot_ann NormBoard ~p",[NormBoard]),
+    Input = ann_norm_input(binary_to_list(NormBoard)),
+    % ?Info("play_bot_ann Input ~p",[Input]),
+    Output = ann:predict(Network, Input),
+    % ?Info("play_bot_ann Output ~p",[Output]),
+    {ok, Idx, NewBoard} = pick_output(Output, Board, Width, Gravity, Player),
+    % ?Info("play_bot_ann ~p NewBoard ~p",[Idx, binary_to_list(NewBoard)]),    
+    {ok, Idx, NewBoard}.
 
 
 -spec pick_output(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
 pick_output(Output, Board, Width, Gravity, Player) ->
     SortedOutput = lists:sort([{Gain,I} || {Gain,I} <- lists:zip(Output, lists:seq(0, length(Output)-1))]),   
-    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
+    pick_output_sorted(lists:reverse(SortedOutput), Board, Width, Gravity, Player).
+%    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
 
 -spec pick_output_sorted(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
 pick_output_sorted([{_,I}|Outputs], Board, Width, Gravity, Player) ->

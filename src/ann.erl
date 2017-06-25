@@ -12,10 +12,10 @@ output_activation(X) -> X.
 
 output_activation_gradient(_) -> 1.0.
 
-run_neuron() ->
+run_neuron() ->                                       % spawn an unitionalized neuron (including BiasNeorons)
   spawn_link(ann, run_neuron, [none, [], [], 0]).
 
-run_neuron(Main, Inputs, Outputs, Token) ->
+run_neuron(Main, Inputs, Outputs, Token) ->           % neuron event loop
   receive
     {main_pid, Pid} ->
       run_neuron(Pid, Inputs, Outputs, Token);
@@ -62,7 +62,7 @@ resend_status_neuron([], Outputs, Token) ->
 resend_status_neuron(_, _, _) -> ok.
 
 layer_weights([]) -> [];
-layer_weights([Out | Outputs]) ->
+layer_weights([Out | Outputs]) ->     % collect input weights of next layer's neurons
   Out ! {weights, self()},
   Weight = receive
     {response_weight, W} -> W
@@ -140,22 +140,22 @@ create_neural_network(Layers) ->
 create_neural_network(Layers, Weights) when length(Layers) > 1 ->
   Neurons = [[run_neuron() || _ <- lists:seq(1, InLayer)] || InLayer <- modify_layers(Layers)],
   full_mesh_connect(Neurons, Weights),
-  NN = spawn_link(ann, neural_network, [tl(hd(Neurons)), 
-                                        lists:last(Neurons), 
-                                        lists:map(fun(X) -> hd(X) end, 
-                                        lists:droplast(Neurons)), 
-                                        0]),
+  NN = spawn_link(ann, neural_network, [
+                    tl(hd(Neurons)),                                          % InputLayer
+                    lists:last(Neurons),                                      % OutputLayer
+                    lists:map(fun(X) -> hd(X) end, lists:droplast(Neurons)),  % BiasNeurons
+                    0]),                                                      % Token
   lists:foreach(fun(Pid) -> 
                   Pid ! {connect_to_input, {NN, 1.0}} 
-                end, tl(hd(Neurons))),
+                end, tl(hd(Neurons))),                  % connect InputLayer to NN process
   lists:foreach(fun(Pid) ->
                   Pid ! {main_pid, NN}
-                end, lists:concat(Neurons)),
+                end, lists:concat(Neurons)),            % connect InputLayer to NN process
   NN;
 create_neural_network(_, _) ->
   io:format("Not enought layers.~n"), fail.
 
-neural_network(InputLayer, OutputLayer, BiasNeurons, Token) ->
+neural_network(InputLayer, OutputLayer, BiasNeurons, Token) -> % Network process event loop
   erlang:garbage_collect(),
   receive
     {predict, Input} ->
@@ -307,9 +307,9 @@ compute_rss([X | Xs], [Y | Ys], R) ->
 
 connect(InPidWeight, OutPid) ->
   OutPid ! {connect_to_input, InPidWeight},
-  {InPid, _} = InPidWeight,
+  {InPid, W} = InPidWeight,
   InPid ! {connect_to_output, OutPid},
-  io:format("connected ~p to ~p ~n", [InPid, OutPid]).
+  io:format("connected ~p to ~p weight ~p~n", [InPid, OutPid, W]).
 
 full_mesh_connect(_, []) -> ok;
 full_mesh_connect([N1, N2], W) -> 
@@ -343,11 +343,12 @@ modify_layers([]) -> [];
 modify_layers([L]) -> [L];
 modify_layers([L | Ls]) -> [L + 1 | modify_layers(Ls)].
 
-compute_neurons([]) -> 0;
+compute_neurons([]) -> 0;             % brutto Layers (with BiasNeurons) from netto Layers
 compute_neurons([_L]) -> 0;
 compute_neurons([L1, L2 | Ls]) -> (L1 + 1) * L2 + compute_neurons([L2 | Ls]).
 
 random_weigths(N) -> [rand:uniform() * 2.0 - 1.0 || _ <- lists:seq(1, N)].
+% random_weigths(N) -> lists:seq(1, N).
 
 random_shuffle(L) ->
   [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- L])].
