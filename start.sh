@@ -34,8 +34,7 @@ cookie="-setcookie $ck"
 
 # PATHS
 paths="-pa"
-paths=$paths" $PWD/ebin"
-paths=$paths" $PWD/deps/*/ebin"
+paths=$paths" _build/default/lib/*/ebin"
 
 # Proto dist module
 dist_opts="-proto_dist"
@@ -55,11 +54,11 @@ imem_opts=$imem_opts" tcp_port $port"
 
 # dderl opts
 dderl_opts="-dderl"
-dderl_opts=$dderl_opts" interface \"0.0.0.0\" port $dderlport" 
+dderl_opts=$dderl_opts" interface \"0.0.0.0\" port $dderlport"
 
 # sasl opts
 sasl_opts="-sasl"
-sasl_opts=$sasl_opts"  sasl_error_logger false" 
+sasl_opts=$sasl_opts"  sasl_error_logger false"
 
 start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts"
 

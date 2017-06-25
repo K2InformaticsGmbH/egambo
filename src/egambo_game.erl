@@ -184,7 +184,7 @@
         , accept/2          % accept a specific challenge from someone
         , notify/5          % notify players and watchers about a game state change
         , result/1          % return map with current game result (board status, turn, scores)
-        , moves/1           % return map with game history 
+        , moves/1           % return map with game history
         , read_game/1       % return game status from egGame table
         , read_type/1       % return game status from egGame table
         , write_game/1      % write a game record to the db
@@ -208,43 +208,43 @@
 %% stateful game management functions (run through gen_server for serializability)
 
 -spec create(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
-create(GameType, MyAcc) when is_integer(MyAcc) ->  
+create(GameType, MyAcc) when is_integer(MyAcc) ->
     gen_server:call(?MODULE, {create, GameType, MyAcc});
 create(_, _) -> ?BAD_ACCOUNT.
 
 -spec create(egGameTypeId(), egAccountId(), egAccountId()) -> egGameId() | egGameError().
-create(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  
+create(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->
     gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc});
 create(_, _, _) -> ?BAD_ACCOUNT.
 
 -spec create(egGameTypeId(), integer(), egAccountId(), egAccountId()) -> [egGameId() | egGameError()] | egGameError().
-create(GameType, Cnt, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc), is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->  
+create(GameType, Cnt, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc), is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->
     [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, Cnt)];
 create(_, _, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  ?BAD_BATCH_START_REQUEST;
 create(_, _, _, _) -> ?BAD_ACCOUNT.
 
 -spec start(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
-start(GameType, MyAcc) when is_integer(MyAcc) ->  
+start(GameType, MyAcc) when is_integer(MyAcc) ->
     gen_server:call(?MODULE, {start, GameType, MyAcc});
 start(_, _) -> ?BAD_ACCOUNT.
 
 -spec start(egGameTypeId(), egAccountId(), egAccountId()) -> egGameId() | egGameError().
-start(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  
+start(GameType, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->
     gen_server:call(?MODULE, {start, GameType, YourAcc, MyAcc});
 start(_, _, _) -> ?BAD_ACCOUNT.
 
 -spec cancel(egGameId(), egAccountId()) -> ok | egGameError().
-cancel(GameId, MyAcc) when is_integer(MyAcc) -> 
+cancel(GameId, MyAcc) when is_integer(MyAcc) ->
     gen_server:call(?MODULE, {cancel, GameId, MyAcc});
 cancel(_, _) -> ?BAD_ACCOUNT.
 
 -spec accept(egGameId(), egAccountId()) -> ok | egGameError().
-accept(GameId, MyAcc) when is_integer(MyAcc) -> 
+accept(GameId, MyAcc) when is_integer(MyAcc) ->
     gen_server:call(?MODULE, {accept, GameId, MyAcc});
 accept(_, _) -> ?BAD_ACCOUNT.
 
 -spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBotId()]) -> ok | egGameError().
-notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) -> 
+notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) ->
     case lists:member(undefined, Bots) of
         true ->
             % ToDo: publish a message to be received by subscribed players and watchers
@@ -259,12 +259,12 @@ resume_bots(GameTypeId, [undefined|Bots]) ->
     resume_bots(GameTypeId, Bots);
 resume_bots(GameTypeId, [Bot|Bots]) ->
     case global:whereis_name(?BOT_GID(Bot, GameTypeId)) of
-        undefined -> 
+        undefined ->
             case Bot:resume(GameTypeId) of
                 ok ->       resume_bots(GameTypeId, Bots);
                 Error ->    Error
             end;
-        Pid when is_pid(Pid) -> 
+        Pid when is_pid(Pid) ->
             resume_bots(GameTypeId, Bots)
     end.
 
@@ -293,60 +293,60 @@ eg_time_to_usec({Sec,Micro,_,_}) -> 1000000*Sec+Micro;
 eg_time_to_usec({Sec,Micro}) -> 1000000*Sec+Micro.
 
 -spec read_game(egGameId()) -> #egGame{} | egGameError().
-read_game(GameId) -> 
+read_game(GameId) ->
     case catch imem_meta:read(egGame, GameId) of
         [#egGame{} = Game] ->   Game;
         _ ->                    ?NO_SUCH_GAME
     end.
 
 -spec write_game(#egGame{}) -> ok | egGameError().
-write_game(Game) ->  
+write_game(Game) ->
     % ToDo: detect a finished game and update global score statsistics
     imem_meta:write(egGame, Game).
 
 -spec read_type(egGameTypeId()) -> #egGameType{} | egGameError().
-read_type(GameTypeId) -> 
+read_type(GameTypeId) ->
     case catch imem_meta:read(egGameType, GameTypeId) of
         [#egGameType{} = Type] ->   Type;
         _ ->                        ?NO_SUCH_GAME_TYPE
     end.
 
 -spec read_bot(egGameId()) -> #egGame{} | egGameError().
-read_bot(AccountId) -> 
+read_bot(AccountId) ->
     case catch imem_meta:read(ddAccount, AccountId) of
-        [Account] ->    
-            case element(4, Account) of 
+        [Account] ->
+            case element(4, Account) of
                 user ->     undefined;
                 deamon ->   undefined;
-                Type -> 
+                Type ->
                     case application:get_key(egambo, modules) of
                         {ok, Modules} ->
-                            case lists:member(Type, Modules) of 
+                            case lists:member(Type, Modules) of
                                 true ->     Type;
                                 false ->    undefined
                             end;
-                        _ -> 
+                        _ ->
                             undefined
                     end
             end;
-        _ ->    
+        _ ->
             undefined
     end.
 
 -spec start_game(#egGame{}) -> ok | egGameError().
 start_game(#egGame{gid=GameId, tid=GameType, bots=Bots, stime=STime} = Game) ->
-    write_game(Game), 
+    write_game(Game),
     case read_type(GameType) of
         #egGameType{engine=Engine} ->
           case Engine:resume(GameId) of
               ok ->   notify(STime, GameId, start_success, Engine:result(Game), Bots),
-                      ok;   
+                      ok;
               Err ->  notify(STime, GameId, start_failure, Engine:result(Game), Bots),
                       Err
           end;
         Error ->
           Error
-    end.   
+    end.
 
 -spec resume(egGameId() | [egGameId()]) -> ok | egGameError().
 resume(GameIds) when is_list(GameIds) ->
@@ -357,7 +357,7 @@ resume(GameIds) when is_list(GameIds) ->
 resume(GameId)  ->
     case read_game(GameId) of
         #egGame{tid=GameType, bots=Bots} ->
-            case resume_bots(GameType, Bots) of   
+            case resume_bots(GameType, Bots) of
                 ok ->
                     case read_type(GameType) of
                         #egGameType{engine=Engine} ->   Engine:resume(GameId);
@@ -365,10 +365,10 @@ resume(GameId)  ->
                     end;
                 Error ->
                     Error
-            end;   
+            end;
         Error ->
             Error
-    end.  
+    end.
 
 -spec stop(egGameId() | [egGameId()]) -> ok | egGameError().
 stop(GameIds) when is_list(GameIds) ->
@@ -378,86 +378,86 @@ stop(GameIds) when is_list(GameIds) ->
     end;
 stop(GameId)  ->
     case read_game(GameId) of
-        #egGame{tid=GameType} ->   
+        #egGame{tid=GameType} ->
             case read_type(GameType) of
                 #egGameType{engine=Engine} ->   Engine:stop(GameId);
                 Error ->                        Error
-            end;   
+            end;
         Error ->
             Error
-    end.  
+    end.
 
 -spec result(egGameId()) -> egGameResult() | egGameError().
-result(GameId) -> 
-    try 
+result(GameId) ->
+    try
         gen_server:call(?ENGINE_GID(GameId), result)
-    catch 
-        exit:{noproc,_} ->             
+    catch
+        exit:{noproc,_} ->
             case read_game(GameId) of
-                #egGame{tid=GameType} = Game ->   
+                #egGame{tid=GameType} = Game ->
                     case read_type(GameType) of
                         #egGameType{engine=Engine} ->   Engine:result(Game);
                         Error ->                        Error
-                    end;   
+                    end;
                 Error ->
                     Error
             end;
         Class:Reason ->
-            {error, Class, Reason}             
+            {error, Class, Reason}
     end.
 
 -spec moves(egGameId()) -> egGameMoves() | egGameError().
-moves(GameId) -> 
-    try 
+moves(GameId) ->
+    try
         gen_server:call(?ENGINE_GID(GameId), moves)
     catch
-        exit:{noproc,_} ->             
+        exit:{noproc,_} ->
             case read_game(GameId) of
-                #egGame{tid=GameType} = Game ->   
+                #egGame{tid=GameType} = Game ->
                     case read_type(GameType) of
                         #egGameType{engine=Engine} ->   Engine:moves(Game);
                         Error ->                        Error
-                    end;   
+                    end;
                 Error ->
                     Error
-            end  
+            end
     end.
 
 %% stateless (engine access) functions with fallback to (stateful, serialized) engine creation
 
 -spec play(egGameId(), egGameMove(), egAlias(), egAccountId()) -> ok | game_finished | egGameError().
-play(GameId, Move, MyAlias, MyAccountId) -> 
+play(GameId, Move, MyAlias, MyAccountId) ->
     engine_call(GameId, {play, Move, MyAlias, MyAccountId}).
 
 -spec play(egGameId(), egGameMove(), egAccountId()) -> ok | game_finished | egGameError().
-play(GameId, Move, MyAccountId) -> 
+play(GameId, Move, MyAccountId) ->
     engine_call(GameId, {play, Move, MyAccountId}).
 
 -spec play(egGameId(), egGameMove()) -> ok | game_finished | egGameError().
-play(GameId, Move) -> 
+play(GameId, Move) ->
     engine_call(GameId, {play, Move}).
 
-engine_call(GameId, Command) -> 
-    try 
+engine_call(GameId, Command) ->
+    try
         gen_server:call(?ENGINE_GID(GameId), Command)
     catch
-        exit:{normal,_} -> game_finished;       
-        exit:{noproc,_} ->        
-            case resume(GameId) of 
-                ok ->   
-                    try 
+        exit:{normal,_} -> game_finished;
+        exit:{noproc,_} ->
+            case resume(GameId) of
+                ok ->
+                    try
                         gen_server:call(?ENGINE_GID(GameId), Command)
-                    catch 
+                    catch
                         _:Err -> Err
-                    end; 
-                {error, {error, Error}} ->    
+                    end;
+                {error, {error, Error}} ->
                   {error, Error};
                 {error,{{error,Error}, Extra}} ->
                   {error, Error, Extra};
-                Error -> 
+                Error ->
                   Error
             end
-    end.    
+    end.
 
 % Internal helper functions
 
@@ -477,9 +477,9 @@ insert_default([Rec|Recs]) ->
 
 init(_) ->
     Result = try
-        imem_meta:init_create_table(egGameCategory, {record_info(fields, egGameCategory), ?egGameCategory, #egGameCategory{}}, [], system),  
-        imem_meta:init_create_table(egGameType, {record_info(fields, egGameType), ?egGameType, #egGameType{}}, [], system),  
-        imem_meta:init_create_table(egGame, {record_info(fields, egGame), ?egGame, #egGame{}}, [], system),  
+        imem_meta:init_create_table(egGameCategory, {record_info(fields, egGameCategory), ?egGameCategory, #egGameCategory{}}, [], system),
+        imem_meta:init_create_table(egGameType, {record_info(fields, egGameType), ?egGameType, #egGameType{}}, [], system),
+        imem_meta:init_create_table(egGame, {record_info(fields, egGame), ?egGame, #egGame{}}, [], system),
         imem_meta:init_create_check_table(egGameMsg, {record_info(fields, egGameMsg), ?egGameMsg, #egGameMsg{}}, ?EG_MSG_TABLE_OPTS, system),
         insert_default(?DEFAULT_GAME_CATEGORIES),
         insert_default(?DEFAULT_GAME_TYPES),
@@ -489,9 +489,9 @@ init(_) ->
         insert_default(?DEFAULT_VIEWS),
         imem_snap:suspend_snap_loop(),
         process_flag(trap_exit, true),
-        {ok,#state{}}
+%% wwe    {ok,#state{}}
     catch
-        _Class:Reason -> {stop, {Reason,erlang:get_stacktrace()}} 
+        _Class:Reason -> {stop, {Reason,erlang:get_stacktrace()}}
     end,
     Result.
 
@@ -507,9 +507,9 @@ start_link() ->
     end.
 
 handle_call({create, GameType, MyAccountId}, _From, State) when is_binary(GameType), is_integer(MyAccountId) ->
-    % Unconditionally create a game    
+    % Unconditionally create a game
     case read_type(GameType) of
-        #egGameType{cid=Cid} ->               
+        #egGameType{cid=Cid} ->
             GameId = rand:uniform(1844674407370955200),
             write_game(#egGame{ gid=GameId
                               , tid=GameType
@@ -519,7 +519,7 @@ handle_call({create, GameType, MyAccountId}, _From, State) when is_binary(GameTy
                               , ctime=eg_time()
                               }),
             {reply, GameId, State};
-        _ -> 
+        _ ->
             {reply, ?NO_SUCH_GAME_TYPE, State}
     end;
 handle_call({create, _GameType, MyAccountId, MyAccountId}, _From, State) ->
@@ -529,7 +529,7 @@ handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when i
     % If proposed YourAccountId is a bot, it will automatically be accepted (Status=playing)
     case imem_meta:read(egGameType, GameType) of
         [#egGameType{cid=Cid}] ->
-            % ToDo: check for existing account               
+            % ToDo: check for existing account
             GameId = rand:uniform(1844674407370955200),
             Game = #egGame{ gid=GameId
                           , tid=GameType
@@ -538,7 +538,7 @@ handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when i
                           , ctime=eg_time()
                           },
             MyBot = read_bot(MyAccountId),
-            case read_bot(YourAccountId) of 
+            case read_bot(YourAccountId) of
                 undefined ->
                     write_game(Game#egGame{bots=[MyBot, undefined]}),
                     {reply, GameId, State};
@@ -547,11 +547,11 @@ handle_call({create, GameType, YourAccountId, MyAccountId}, _From, State) when i
                         ok ->
                             start_game(prepare(Game#egGame{bots=[MyBot, YourBot], status=playing, stime=eg_time()})),
                             {reply, GameId, State};
-                        Error -> 
+                        Error ->
                             {reply, Error, State}
                     end
             end;
-        _ -> 
+        _ ->
             {reply, ?NO_SUCH_GAME_TYPE, State}
     end;
 handle_call({start, GameType, MyAccountId}, From, State) when is_binary(GameType), is_integer(MyAccountId) ->
@@ -559,7 +559,7 @@ handle_call({start, GameType, MyAccountId}, From, State) when is_binary(GameType
     case imem_meta:select(egGame, [ {#egGame{tid=GameType, status=forming, players=['$1', MyAccountId], _ = '_'}
                                   , [{'/=', '$1', MyAccountId}]
                                   , ['$_']}
-                                  ]) of        
+                                  ]) of
         {[], true} ->           % forward to look for an any-player game in forming state
             handle_call({start_any, GameType, MyAccountId}, From, State);
         {Games, _} ->
@@ -572,19 +572,19 @@ handle_call({start, GameType, MyAccountId}, From, State) when is_binary(GameType
                     {reply, Error, State}
             end
     end;
-handle_call({start_any, GameType, MyAccountId}, From, State) when is_binary(GameType), is_integer(MyAccountId) ->    
+handle_call({start_any, GameType, MyAccountId}, From, State) when is_binary(GameType), is_integer(MyAccountId) ->
     % Find a matching game (not requesting particular players) in forming state
     case imem_meta:select(egGame, [ {#egGame{tid=GameType, status=forming, players=['$1'], _ = '_'}
                                   , [{'/=', '$1', MyAccountId}]
                                   , ['$_']}
-                                  ]) of        
+                                  ]) of
         {[], true} ->           % no invitation exists, forward to unconditional game creation
             handle_call({create, GameType, MyAccountId}, From, State);
         {Games, _} ->
             #egGame{players=[P], bots=[B]} = Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             Bots = [B, read_bot(MyAccountId)],
             case resume_bots(GameType, Bots) of
-                ok ->   
+                ok ->
                     start_game(prepare(Game#egGame{players=[P, MyAccountId], bots=Bots, status=playing, stime=eg_time()})),
                     {reply, Game#egGame.gid, State};
                 Error ->
@@ -598,13 +598,13 @@ handle_call({start, GameType, YourAccountId, MyAccountId}, From, State) when is_
     case imem_meta:select(egGame, [ {#egGame{tid=GameType, status=forming, players=[YourAccountId, MyAccountId], _ = '_'}
                                   , []
                                   , ['$_']}
-                                  ]) of        
+                                  ]) of
         {[], true} ->
             handle_call({create, GameType, YourAccountId, MyAccountId}, From, State);
         {Games, _} ->
             Game = lists:nth(rand:uniform(length(Games)), Games),   % pick one game at random
             case resume_bots(GameType, Game#egGame.bots) of
-                ok ->   
+                ok ->
                     start_game(prepare(Game#egGame{status=playing, stime=eg_time()})),
                     {reply, Game#egGame.gid, State};
                 Error ->
@@ -613,33 +613,33 @@ handle_call({start, GameType, YourAccountId, MyAccountId}, From, State) when is_
     end;
 handle_call({cancel, GameId, MyAccountId}, _From, State) when is_integer(GameId), is_integer(MyAccountId) ->
     case imem_meta:read(egGame, GameId) of
-        [#egGame{status=forming, players=[MyAccountId]}] ->               
+        [#egGame{status=forming, players=[MyAccountId]}] ->
             imem_meta:delete(egGame, GameId),
             {reply, ok, State};
-        [#egGame{status=forming, players=[MyAccountId,_]}] ->               
+        [#egGame{status=forming, players=[MyAccountId,_]}] ->
             imem_meta:delete(egGame, GameId),
             {reply, ok, State};
-        [#egGame{status=forming}] ->               
+        [#egGame{status=forming}] ->
             {reply, ?NOT_YOUR_GAME, State};
         [#egGame{status=Status}] ->
             S = atom_to_binary(Status, utf8),
             {reply, ?CANCEL_STATUS(S), State};
-        _ -> 
+        _ ->
             {reply, ?NO_SUCH_GAME, State}
     end;
 handle_call({accept, GameId, MyAccountId}, _From, State) when is_integer(GameId), is_integer(MyAccountId) ->
     case imem_meta:read(egGame, GameId) of
         [#egGame{status=forming, tid=GameType, players=[_, MyAccountId], bots=Bots} = Game] ->
             case resume_bots(GameType, Bots) of
-                ok ->   
-                    start_game(prepare(Game#egGame{status=playing, stime=eg_time()})), 
+                ok ->
+                    start_game(prepare(Game#egGame{status=playing, stime=eg_time()})),
                     {reply, ok, State};
                 Error ->
                     {reply, Error, State}
             end;
-        [#egGame{status=forming, players=[MyAccountId, _]}] ->               
+        [#egGame{status=forming, players=[MyAccountId, _]}] ->
             {reply, ?UNIQUE_PLAYERS, State};
-        [#egGame{status=forming, players=[MyAccountId]}] ->               
+        [#egGame{status=forming, players=[MyAccountId]}] ->
             {reply, ?UNIQUE_PLAYERS, State};
         [#egGame{status=forming, tid=GameType, players=[Player], bots=[Bot]} = Game] ->
             Bots = [Bot, read_bot(MyAccountId)],
@@ -650,17 +650,17 @@ handle_call({accept, GameId, MyAccountId}, _From, State) when is_integer(GameId)
                                                  , bots=Bots
                                                  , stime=eg_time()
                                                  }
-                                     )),               
+                                     )),
                     {reply, ok, State};
                 Error ->
                     {reply, Error, State}
             end;
-        [#egGame{status=forming, players=[_, _]}] ->               
+        [#egGame{status=forming, players=[_, _]}] ->
             {reply, ?ACCEPT_MISMATCH, State};
         [#egGame{status=Status}] ->
             S = atom_to_binary(Status, utf8),
             {reply, ?ACCEPT_STATUS(S), State};
-        _ -> 
+        _ ->
             {reply, ?NO_SUCH_GAME, State}
     end;
 handle_call(_Request, _From, State) -> {reply, ?BAD_COMMAND, State}.
