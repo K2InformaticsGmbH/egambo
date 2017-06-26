@@ -489,7 +489,7 @@ init(_) ->
         insert_default(?DEFAULT_VIEWS),
         imem_snap:suspend_snap_loop(),
         process_flag(trap_exit, true)
-%% wwe    {ok,#state{}}
+        {ok,#state{}}
     catch
         _Class:Reason -> {stop, {Reason,erlang:get_stacktrace()}}
     end,
