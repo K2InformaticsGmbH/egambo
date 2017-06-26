@@ -490,7 +490,7 @@ init(_) ->
         insert_default(?DEFAULT_CMDS),
         insert_default(?DEFAULT_VIEWS),
         imem_snap:suspend_snap_loop(),
-        process_flag(trap_exit, true)
+        process_flag(trap_exit, true),
         {ok,#state{}}
     catch
         _Class:Reason -> {stop, {Reason,erlang:get_stacktrace()}}
