@@ -15,6 +15,8 @@
 
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
 -define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
+-define(ANN_NOT_LEARNING, {error, <<"Network is not in learning mode">>}).
+-define(ANN_NOT_PLAYING, {error, <<"Network is not in playing mode">>}).
 
 -record(egTicTacAnnModel,   { tid               :: egGameTypeId()
                             , version = <<>>    :: binary()    % network version name
@@ -95,10 +97,17 @@
         , save/3
         , ann_sample/3
         , read_samples/6
+        , predict/2
+        , pick_output/5
         ]).
 
 % egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
-% egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20, 0.1, 0.05, 0.99, 1, 100).
+% egambo_tictac_ann:start_learning(<<"tic_tac_toe_443">>).
+% egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20    , 0.1   , 0.10, 0.0  , 1     , 150).
+% egambo_tictac_ann:train(GameTypeId           , Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) 
+% egambo_tictac_ann:save(<<"tic_tac_toe_443">> , <<"V0.1">>,<<"First Attempt for Learning">>). 
+% egambo_tictac_ann:stop(<<"tic_tac_toe_443">>).
+% egambo_tictac_ann:predict(<<"tic_tac_toe_443">>, ).
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
@@ -133,13 +142,19 @@ train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, LastKey, Batc
             ok;
         {L, true} ->
             ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
-            TrainingSet = [ {I, O} || {_, _, I, O} <- L],
+            TrainingSet = [ {ann_norm_input(I), O} || [_, _, I, O] <- L],
+            % ?Info("First Sample ~p", [hd(TrainingSet)]),
+            % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity);
         {L, false} ->
             ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
-            TrainingSet = [ {I, O} || {_, _, I, O} <- L],
-            gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity),
-            train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, element(2, hd(lists:last(L))), BatchId+1)
+            TrainingSet = [ {ann_norm_input(I), O} || [_, _, I, O] <- L],
+            % ?Info("First Sample ~p", [hd(TrainingSet)]),
+            % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
+            case gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity) of
+                Err when is_tuple(Err) ->  Err;
+                ok -> train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, element(2, hd(lists:last(L))), BatchId+1)
+            end
     end.
 
 test(GameTypeId, QosMin, QosMax) ->
@@ -150,6 +165,9 @@ test(GameTypeId, QosMin, QosMax) ->
             TestSet = [ {I, O} || {_, _, I, O} <- L],
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {test, TestSet}, infinity)
     end.
+
+predict(GameTypeId, NormBoard) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {predict, NormBoard}).
 
 -spec stop(egBotId()) -> ok | egGameError().
 stop(GameTypeId) ->
@@ -186,10 +204,17 @@ read_samples(TableName, GameTypeId, LastKey, Limit, QosMin, QosMax) ->
 match_val(T) when is_tuple(T) -> {const,T};
 match_val(V) -> V.
 
-ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) -> 
-    F = fun(I) -> if I==Move -> 1; true -> 0 end end, 
+ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) ->
+    QOS = if 
+        Score >= 0.0 ->  Score/(MTE div 2 +1);
+        Score == 0.0 ->  0;
+        true -> Score/((MTE+1) div 2)
+    end,
+    F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
     Output = lists:map(F, lists:seq(0, length(Input)-1)),
-    #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=Score/(MTE+1), input=Input, output=Output}.
+    #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=QOS, input=Input, output=Output}.
+
+ann_norm_input(L) -> [I/256.0 || I <- L].    
 
 init([GameTypeId]) ->
     Result = try
@@ -286,23 +311,31 @@ handle_info(Request, State) ->
     {noreply, State}.
 
 handle_call(finish, _From, #state{network=Network} = State) ->
-    Network ! finish,
+    Network ! {finish},
     {reply, ok, State#state{network=undefined}};
 handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
+handle_call({predict, NormBoard}, _From, #state{network=Network, status=playing} = State) ->
+    {reply, ann:predict(Network, ann_norm_input(NormBoard)), State};
+handle_call({predict, _}, _From, State) ->
+    {reply, ?ANN_NOT_PLAYING, State};
 handle_call(start_playing, _From, State) ->
     {reply, ok, State#state{status=playing}};
 handle_call({train, Epochs, ResErr, Rate, TrainingSet}, _From, #state{network=Network, status=learning} = State) ->
     {reply, ann:train(Network, Epochs, ResErr, Rate, TrainingSet), State};
 handle_call({test, TestSet}, _From, #state{network=Network, status=learning} = State) ->
     {reply, ann:compute_error(Network, TestSet), State};
+handle_call({train, _, _, _, _}, _From, State) ->
+    {reply, ?ANN_NOT_LEARNING, State};
+handle_call({test, _}, _From, State) ->
+    {reply, ?ANN_NOT_LEARNING, State};
 handle_call(save, _From, #state{version=Version, info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version}, _From, #state{info=Info} = State) ->
     handle_call({save, Version, Info}, _From, State);
 handle_call({save, Version, Info}, _From, #state{tid=GameTypeId, layers=Layers, network=Network} = State) ->
-    imem_meta:write(?ANN_MODEL, #egTicTacAnnModel{tid=GameTypeId , version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
-    {reply, ok, State};
+    imem_meta:write(?ANN_MODEL, #egTicTacAnnModel{tid=GameTypeId , time=egambo_game:eg_time(), version=Version, info=Info, layers=Layers, weights=ann:get_weights(Network)}),
+    {reply, ok, State#state{version=Version, info=Info}};
 handle_call(state, _From, State) ->
     {reply, State, State};
 handle_call(stop, _From, State) ->
@@ -346,15 +379,23 @@ play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, 
 
 -spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid()) -> egBotMove().
 play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) ->
+    % ?Info("play_bot_ann Board ~p ~p",[Board, NAliases]),
     NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
-    Output = ann:predict(Network, [binary_to_list(NormBoard)]),
-    pick_output(Output, Board, Width, Gravity, Player).
+    % ?Info("play_bot_ann NormBoard ~p",[NormBoard]),
+    Input = ann_norm_input(binary_to_list(NormBoard)),
+    % ?Info("play_bot_ann Input ~p",[Input]),
+    Output = ann:predict(Network, Input),
+    % ?Info("play_bot_ann Output ~p",[Output]),
+    {ok, Idx, NewBoard} = pick_output(Output, Board, Width, Gravity, Player),
+    % ?Info("play_bot_ann ~p NewBoard ~p",[Idx, binary_to_list(NewBoard)]),    
+    {ok, Idx, NewBoard}.
 
 
 -spec pick_output(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
 pick_output(Output, Board, Width, Gravity, Player) ->
     SortedOutput = lists:sort([{Gain,I} || {Gain,I} <- lists:zip(Output, lists:seq(0, length(Output)-1))]),   
-    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
+    pick_output_sorted(lists:reverse(SortedOutput), Board, Width, Gravity, Player).
+%    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
 
 -spec pick_output_sorted(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
 pick_output_sorted([{_,I}|Outputs], Board, Width, Gravity, Player) ->
