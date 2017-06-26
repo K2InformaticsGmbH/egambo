@@ -141,13 +141,13 @@ fire_neuron(Inputs, Outputs, _, _, Token, Activation) ->
   {Output, snd(Input)}.
 
 create_neural_network(Layers) ->
-  Weights = random_weigths(compute_neurons(Layers)),
+  Weights = random_weights(compute_neurons(Layers)),
   create_neural_network(Layers, Weights).
 
 create_neural_network(Layers, Weights) when is_list(Weights) ->
   create_neural_network(Layers, Weights, sigmoid);
 create_neural_network(Layers, Activation) when is_atom(Activation) ->
-  Weights = random_weigths(compute_neurons(Layers)),
+  Weights = random_weights(compute_neurons(Layers)),
   create_neural_network(Layers, Weights, Activation).
 
 create_neural_network(Layers, Weights, Activation) when length(Layers) > 1 ->
@@ -360,8 +360,8 @@ compute_neurons([]) -> 0;             % brutto Layers (with BiasNeurons) from ne
 compute_neurons([_L]) -> 0;
 compute_neurons([L1, L2 | Ls]) -> (L1 + 1) * L2 + compute_neurons([L2 | Ls]).
 
-random_weigths(N) -> [rand:uniform() * 0.5 - 0.25 || _ <- lists:seq(1, N)].
-% random_weigths(N) -> lists:seq(1, N).
+random_weights(N) -> [rand:uniform() * 0.5 - 0.25 || _ <- lists:seq(1, N)].
+% random_weights(N) -> lists:seq(1, N).
 
 random_shuffle(L) ->
   [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- L])].
