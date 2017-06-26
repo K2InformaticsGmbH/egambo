@@ -3,49 +3,56 @@
 -compile([export_all]).
 
 sigmoid(X) -> 1.0 / (1.0 + math:exp(-X)).
+sigmoid_grad(X) -> X * (1.0 - X).
 
-activation(X) -> sigmoid(X).
+relu(X) -> max(0.0, X).
+relu_grad(X) when X =< 0 -> 0.0;
+relu_grad(_X) -> 1.0.
 
-activation_gradient(X) -> X * (1.0 - X).
+activation(sigmoid, X) -> sigmoid(X);
+activation(relu, X) -> relu(X).
+
+activation_gradient(sigmoid, X) -> sigmoid_grad(X);
+activation_gradient(relu, X) -> relu_grad(X).
 
 output_activation(X) -> X.
 
 output_activation_gradient(_) -> 1.0.
 
-run_neuron() ->                                       % spawn an unitionalized neuron (including BiasNeorons)
-  spawn_link(ann, run_neuron, [none, [], [], 0]).
+run_neuron(Activation) ->  % spawn an uninitialized neuron (including BiasNeurons)
+  spawn_link(ann, run_neuron, [none, [], [], 0, Activation]).
 
-run_neuron(Main, Inputs, Outputs, Token) ->           % neuron event loop
+run_neuron(Main, Inputs, Outputs, Token, Activation) ->           % neuron event loop
   receive
     {main_pid, Pid} ->
-      run_neuron(Pid, Inputs, Outputs, Token);
+      run_neuron(Pid, Inputs, Outputs, Token, Activation);
 
     {connect_to_output, Pid} ->
-      run_neuron(Main, Inputs, [Pid | Outputs], Token);
+      run_neuron(Main, Inputs, [Pid | Outputs], Token, Activation);
 
     {connect_to_input, PidWeight} ->
-      run_neuron(Main, [PidWeight | Inputs], Outputs, Token);
+      run_neuron(Main, [PidWeight | Inputs], Outputs, Token, Activation);
 
     {status, Token} ->
       status_neuron(Inputs, Outputs, Token),
-      run_neuron(Main, Inputs, Outputs, Token + 1);
+      run_neuron(Main, Inputs, Outputs, Token + 1, Activation);
     
     {layer_weights, ReplyPid} ->
       W = layer_weights(lists:reverse(Outputs)),
       ReplyPid ! {response_layer_weights, W},
-      run_neuron(Main, Inputs, Outputs, Token);
+      run_neuron(Main, Inputs, Outputs, Token, Activation);
     
     {weights, ReplyPid} ->
       ReplyPid ! {response_weight, [W || {_I, W} <- lists:reverse(Inputs)]},
-      run_neuron(Main, Inputs, Outputs, Token);
+      run_neuron(Main, Inputs, Outputs, Token, Activation);
 
     {feed_forward, Token} ->
-      fire_neuron(Inputs, Outputs, {feed_forward, Token}, Main, Token),
-      run_neuron(Main, Inputs, Outputs, Token + 1);
+      fire_neuron(Inputs, Outputs, {feed_forward, Token}, Main, Token, Activation),
+      run_neuron(Main, Inputs, Outputs, Token + 1, Activation);
 
     {back_prop, LearningRate, Token} ->
-      NewInputs = learn_neuron(Inputs, Outputs, LearningRate, Main, Token),
-      run_neuron(Main, NewInputs, Outputs, Token + 1)
+      NewInputs = learn_neuron(Inputs, Outputs, LearningRate, Main, Token, Activation),
+      run_neuron(Main, NewInputs, Outputs, Token + 1, Activation)
   end.
 
 %% -----
@@ -70,26 +77,26 @@ layer_weights([Out | Outputs]) ->     % collect input weights of next layer's ne
   [Weight | layer_weights(Outputs)].
 
 % -- learning
-learn_neuron([], Outputs, LearningRate, Main, Token) ->
+learn_neuron([], Outputs, LearningRate, Main, Token, Activation) ->
   % -- bias neuron
-  fire_neuron([], Outputs, {back_prop, LearningRate, Token}, Main, Token),
+  fire_neuron([], Outputs, {back_prop, LearningRate, Token}, Main, Token, Activation),
   [receive {delta, Pid, _, Token} -> ignore end || Pid <- Outputs],
   [];
-learn_neuron(Inputs, [], LearningRate, Main, Token) ->
+learn_neuron(Inputs, [], LearningRate, Main, Token, Activation) ->
   % -- output neuron
-  {Output, Outs} = fire_neuron(Inputs, [], output_layer_fire, Main, Token),
+  {Output, Outs} = fire_neuron(Inputs, [], output_layer_fire, Main, Token, Activation),
   receive {target, Target, Token} -> Target end,
   Delta = (Output - Target) * output_activation_gradient(Output),
   update_weights(Inputs, Outs, Delta, LearningRate, Token);
-learn_neuron([{Pid, Weight}], Outputs, _, Main, Token) when Pid == Main ->
+learn_neuron([{Pid, Weight}], Outputs, _, Main, Token, Activation) when Pid == Main ->
   % -- input layer neuron
-  fire_neuron([{Pid, Weight}], Outputs, input_layer_fire, Main, Token),
+  fire_neuron([{Pid, Weight}], Outputs, input_layer_fire, Main, Token, Activation),
   [receive {delta, N, InDelta, Token} -> InDelta end || N <- Outputs],
   [{Pid, Weight}];
-learn_neuron(Inputs, Outputs, LearningRate, Main, Token) ->
+learn_neuron(Inputs, Outputs, LearningRate, Main, Token, Activation) ->
   % -- hidden layer neuron
-  {Output, Outs} = fire_neuron(Inputs, Outputs, hidden_layer_fire, Main, Token),
-  Delta = lists:sum([receive {delta, Pid, InDelta, Token} -> InDelta end || Pid <- Outputs]) * activation_gradient(Output),
+  {Output, Outs} = fire_neuron(Inputs, Outputs, hidden_layer_fire, Main, Token, Activation),
+  Delta = lists:sum([receive {delta, Pid, InDelta, Token} -> InDelta end || Pid <- Outputs]) * activation_gradient(Activation, Output),
   update_weights(Inputs, Outs, Delta, LearningRate, Token).
 
 update_weights(Inputs, Outs, Delta, LearningRate, Token) ->
@@ -100,7 +107,7 @@ update_weights(Inputs, Outs, Delta, LearningRate, Token) ->
             end, lists:zip(Inputs, Outs)).
 
 % -- predicting
-fire_neuron([], Outputs, Opt, _, Token) ->
+fire_neuron([], Outputs, Opt, _, Token, _Activation) ->
   % -- bias neuron
   Self = self(),
   lists:foreach(fun(Pid) ->
@@ -108,14 +115,14 @@ fire_neuron([], Outputs, Opt, _, Token) ->
                   Pid ! {fire, Self, 1.0, Token} 
                 end, Outputs),
   {1.0, []};
-fire_neuron(Inputs, [], _, Main, Token) ->
+fire_neuron(Inputs, [], _, Main, Token, _Activation) ->
   % -- output neuron
   Self = self(),
   Input = [receive {fire, Pid, In, Token} -> {Weight * In, In} end || {Pid, Weight} <- Inputs],
   Output = output_activation(sum_tuples(Input)),
   Main ! {output, Self, Output, Token},
   {Output, snd(Input)};
-fire_neuron([{Pid, _}], Outputs, _, Main, Token) when Pid == Main ->
+fire_neuron([{Pid, _}], Outputs, _, Main, Token, _Activation) when Pid == Main ->
   % -- input layer
   Self = self(),
   Output = receive {fire, Pid, In, Token} -> In end,
@@ -123,11 +130,11 @@ fire_neuron([{Pid, _}], Outputs, _, Main, Token) when Pid == Main ->
                   N ! {fire, Self, Output, Token}
                 end, Outputs),
   {Output, [Output]};
-fire_neuron(Inputs, Outputs, _, _, Token) ->
+fire_neuron(Inputs, Outputs, _, _, Token, Activation) ->
   % -- hidden layer neuron
   Self = self(),
   Input = [receive {fire, Pid, In, Token} -> {Weight * In, In} end || {Pid, Weight} <- Inputs],
-  Output = activation(sum_tuples(Input)),
+  Output = activation(Activation, sum_tuples(Input)),
   lists:foreach(fun(Pid) ->
                   Pid ! {fire, Self, Output, Token}
                 end, Outputs),
@@ -137,8 +144,14 @@ create_neural_network(Layers) ->
   Weights = random_weigths(compute_neurons(Layers)),
   create_neural_network(Layers, Weights).
 
-create_neural_network(Layers, Weights) when length(Layers) > 1 ->
-  Neurons = [[run_neuron() || _ <- lists:seq(1, InLayer)] || InLayer <- modify_layers(Layers)],
+create_neural_network(Layers, Weights) when is_list(Weights) ->
+  create_neural_network(Layers, Weights, sigmoid);
+create_neural_network(Layers, Activation) when is_atom(Activation) ->
+  Weights = random_weigths(compute_neurons(Layers)),
+  create_neural_network(Layers, Weights, Activation).
+
+create_neural_network(Layers, Weights, Activation) when length(Layers) > 1 ->
+  Neurons = [[run_neuron(Activation) || _ <- lists:seq(1, InLayer)] || InLayer <- modify_layers(Layers)],
   full_mesh_connect(Neurons, Weights),
   NN = spawn_link(ann, neural_network, [
                     tl(hd(Neurons)),                                          % InputLayer
@@ -152,7 +165,7 @@ create_neural_network(Layers, Weights) when length(Layers) > 1 ->
                   Pid ! {main_pid, NN}
                 end, lists:concat(Neurons)),            % connect InputLayer to NN process
   NN;
-create_neural_network(_, _) ->
+create_neural_network(_, _, _) ->
   io:format("Not enought layers.~n"), fail.
 
 neural_network(InputLayer, OutputLayer, BiasNeurons, Token) -> % Network process event loop
@@ -347,7 +360,7 @@ compute_neurons([]) -> 0;             % brutto Layers (with BiasNeurons) from ne
 compute_neurons([_L]) -> 0;
 compute_neurons([L1, L2 | Ls]) -> (L1 + 1) * L2 + compute_neurons([L2 | Ls]).
 
-random_weigths(N) -> [rand:uniform() * 2.0 - 1.0 || _ <- lists:seq(1, N)].
+random_weigths(N) -> [rand:uniform() * 0.5 - 0.25 || _ <- lists:seq(1, N)].
 % random_weigths(N) -> lists:seq(1, N).
 
 random_shuffle(L) ->
