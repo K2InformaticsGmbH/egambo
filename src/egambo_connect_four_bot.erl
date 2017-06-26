@@ -39,6 +39,7 @@
 
 -define(NETWORK_NAME, "all_data_tf_500").
 -define(NETWORK_LAYERS, [42,128,256,72,1]).
+%-define(NETWORK_LAYERS, [42,128,512,108,1]).
 
 -record(state, {
     id :: list(),
@@ -333,11 +334,22 @@ handle_call({train, Batches, BatchSize, Epochs, FromKey}, _From, #state{id = Id,
     {reply, train(Id, NN, Batches, BatchSize, Epochs, FromKey, 0), State}.
 
 %% This game id is not the same as our internal game ids, maybe we should change name...
-handle_cast({play_bot_req, GameId, BoardBin, [Alias | _]}, #state{network = NN} = State) ->
-    Board = transform_board(BoardBin, Alias),
-    {_Sugested, Best} = suggest_moves_impl(Board, NN),
-    %% For some reason we need to give back the new board ...
-    play_bot_resp(GameId, Alias, egambo_tictac:put(true, BoardBin, 7, Best, Alias)),
+handle_cast({play_bot_req, GameId, BoardBin, [Alias | Others]}, #state{network = NN} = State) ->
+    Options = put_options(BoardBin),
+    case play_bot_immediate_win(BoardBin, Alias, Options) of
+        {ok, Idx, NewBoard} ->
+            play_bot_resp(GameId, Alias, {ok, Idx, NewBoard});
+        {nok, no_immediate_win} ->
+            case play_bot_defend_immediate(BoardBin, Alias, hd(Others), Options) of
+                {ok, Idx, NewBoard} ->
+                    play_bot_resp(GameId, Alias, {ok, Idx, NewBoard});
+                {nok, no_immediate_risk} ->
+                    Board = transform_board(BoardBin, Alias),
+                    {_Sugested, Best} = suggest_moves_impl(Board, NN),
+                    %% For some reason we need to give back the new board ...
+                    play_bot_resp(GameId, Alias, egambo_tictac:put(true, BoardBin, 7, Best, Alias))
+            end
+    end,
     {noreply, State};
 handle_cast(Request, State) -> 
     ?Info("Unsolicited handle_cast in ~p : ~p", [?MODULE, Request]),
@@ -351,3 +363,25 @@ terminate(_Reason, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+
+%%%%% Functions copied/adapted from tic-tac-bot
+put_options(Board) ->
+    lists:usort([ case B of 32 -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board, 0, 7)), lists:seq(0, 6))]) -- [false].
+
+-spec play_bot_immediate_win(binary(), egAlias(), Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
+play_bot_immediate_win(_Board, _Alias, []) -> {nok, no_immediate_win}; 
+play_bot_immediate_win(Board, Alias, [I|Rest]) -> 
+    {ok, Idx, TestBoard} = egambo_tictac:put(true, Board, 7, I, Alias),
+    case egambo_tictac_win_7_6_4:win(TestBoard, Alias) of
+        true ->     {ok, Idx, TestBoard};
+        false ->    play_bot_immediate_win(Board, Alias, Rest)
+    end.
+
+-spec play_bot_defend_immediate(binary(), egAlias(), egAlias(), Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_risk} | {error, atom()}.
+play_bot_defend_immediate(_Board, _Alias, _Enemy, []) -> {nok, no_immediate_risk};
+play_bot_defend_immediate(Board, Alias, Enemy, [I|Rest]) -> 
+    {ok, Idx, TestBoard} = egambo_tictac:put(true, Board, 7, I, Enemy),
+    case egambo_tictac_win_7_6_4:win(TestBoard, Enemy) of
+        true ->     egambo_tictac:put(true, Board, 7, Idx, Alias);
+        false ->    play_bot_defend_immediate(Board, Alias, Enemy, Rest)
+    end.
