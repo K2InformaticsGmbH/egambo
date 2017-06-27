@@ -40,7 +40,6 @@ SET cookie=-setcookie %ck%
 
 REM PATHS
 SET paths=-pa
-SET paths=%paths% %cd%\ebin
 SET paths=%paths% %cd%\_build\default\lib\cowboy\ebin
 SET paths=%paths% %cd%\_build\default\lib\cowlib\ebin
 SET paths=%paths% %cd%\_build\default\lib\dderl\ebin
