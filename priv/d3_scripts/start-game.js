@@ -11,7 +11,8 @@ function init(container, width, height) {
     var opponents = [
         {id: 1, name: "Bot 1"},
         {id: 2, name: "Bot 2"},
-        {id: -1, name: 'None'}
+        {id: -1, name: 'None'},
+        {id: 5, name: "Connect 4 Bot"}
     ];
 
     var opponent = 1;
@@ -56,7 +57,8 @@ function init(container, width, height) {
         .append('div')
         .style('margin-bottom', '30px')
         .style('margin-left', '20%')
-        .style('width', '60%');
+        .style('width', '60%')
+        .style('display', 'inline-block');
     
     /*var opponentSelect = viewport
         .append('select')
@@ -168,7 +170,12 @@ function init(container, width, height) {
                 .enter()
                 .append('span')
                 .style('cursor', 'pointer')
-                .style('width', '30%')
+                .style('width', function(d) {
+                    if(d.id === 5) {
+                        return '90%';
+                    }
+                    return '30%';
+                })
                 .style('text-align', 'center')
                 .style('font-size', '18px')
                 .style('height', '28px')
@@ -181,6 +188,9 @@ function init(container, width, height) {
                     }
                     return '5%';
                 })
+                .style('overflow', 'hidden')
+                .style('margin-bottom', '5px')
+                .style('float', 'left')
                 .on('click', selectOpponent)
                 .text(function(d) { return d.name; });
             
