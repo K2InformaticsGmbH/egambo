@@ -3,6 +3,7 @@
   {description, "Bot programming platform for turn based games"},
   {vsn, "0.1.0"},
   {registered, []},
+  {included_applications, [etcpjson]},
   {applications, [
                   kernel,
                   stdlib,
