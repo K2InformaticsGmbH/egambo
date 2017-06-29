@@ -11,6 +11,7 @@
 -record(state, {ip, port, srv}).
 
 init(IP, Port, Srv) ->
+    ?Info("peer connected ~s:~p", [inet:ntoa(IP), Port]),
     {ok, #state{ip = IP, port = Port, srv = Srv}}.
 
 handle_info(Json, State) when is_map(Json) ->
@@ -27,6 +28,7 @@ handle_cast(Request, State) ->
 handle_call(Request, From, State) ->
     {stop, {unsupported_call, Request, From}, unsupported, State}.
 
+terminate({shutdown, Reason}, State) -> terminate(Reason, State);
 terminate(Reason, #state{ip = IP, port = Port}) ->
     ?Info("terminate ~s:~p : ~p", [inet:ntoa(IP), Port, Reason]).
 
