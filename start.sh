@@ -6,11 +6,13 @@ nid=$1
 cid=$2
 port=$3
 dderlport=$4
-if [ "$#" -ne 4 ]; then
+etcpjsonport=$5
+if [ "$#" -ne 5 ]; then
     nid=1
     cid=2
     port=1236
     dderlport=8449
+    etcpjsonport=8559
 fi
 
 unamestr=`uname`
@@ -60,7 +62,11 @@ dderl_opts=$dderl_opts" interface \"0.0.0.0\" port $dderlport"
 sasl_opts="-sasl"
 sasl_opts=$sasl_opts"  sasl_error_logger false"
 
-start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts"
+# etcpjson opts
+etcpjson_opts="-etcpjson"
+etcpjson_opts=$etcpjson_opts" interface \"0.0.0.0\" port $etcpjsonport"
+
+start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts $etcpjson_opts"
 
 # egambo start options
 echo "------------------------------------------"

@@ -1,9 +1,12 @@
 -module(egambo).
 
+-include("egambo.hrl").
+
 -export([
     start/0,
     stop/0,
-    get_routes/0
+    get_routes/0,
+    start_tpcjson_listener/0
 ]).
 
 start() ->
@@ -29,3 +32,16 @@ priv_dir(App) ->
         {error, bad_name} -> "priv";
         PDir -> PDir
     end.
+
+-spec start_tpcjson_listener() -> {ok, pid()} | {error, badarg}.
+start_tpcjson_listener() ->
+    SSLOpts = dderl:get_ssl_options(),
+    {ok, ListenPort} = application:get_env(etcpjson, port),
+    {ok, Interface} = application:get_env(etcpjson, interface),
+    {ok, ListenIf} = inet:getaddr(Interface, inet),
+    TransOpts = [{ip, ListenIf}, {port, ListenPort}] ++ SSLOpts,
+    ?Info("ssl tcpjson server listening ~s:~p ~p", [inet:ntoa(ListenIf), ListenPort, SSLOpts]),
+    %% MAXACCEPTORS is defined in dderl, maybe we need our own config.
+    {ok, _ListenerPid} = ranch:start_listener(?MODULE, ?MAXACCEPTORS, ranch_ssl,
+        TransOpts, etcpjson_srv, [egambo_tcp_handler]),
+    ok.
