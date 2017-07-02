@@ -68,7 +68,11 @@
 
 -export([ norm_aliases/3    % normalize board to initial alias order (simplifies bot playing)
         , sample/5          %% sample one random move out of a finished game
+        , samples/5         %% sample all moves out of a finished game
+        , history/2         %% board with merged in move history
         ]).
+
+-safe([sample, samples, history]).
 
 win_module(Width, Height, Run, false) ->
     list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
@@ -284,6 +288,15 @@ cells_to_integer_list(Width, Height, [Cell|Rest], Acc) ->
 
 % External helper functions
 
+history(Space, Moves) -> 
+    Hboard = [ list_to_binary([Ch]) || Ch <- binary_to_list(Space)],
+    L = length(Moves),
+    Fun = fun({I, {Alias, Pos}}, HAcc) -> 
+              {B1,B2} = lists:split(Pos, HAcc),
+              B1 ++ [list_to_binary([Alias|integer_to_list(I)])] ++ tl(B2) 
+          end,
+    lists:foldl(Fun, Hboard, lists:zip(lists:seq(1,L),lists:reverse(Moves))).
+
 -spec sample(binary(), [egAlias()], [egGameMove()], [egAlias()], [egScore()]) -> list().
 %% sample one random move out of a finished game, aliases and scores normalized to initial move order
 %% input:
@@ -301,6 +314,9 @@ cells_to_integer_list(Width, Height, [Cell|Rest], Acc) ->
 sample(Space, IAliases, Moves, FAliases, FScores) ->
     L = length(Moves),                                  % number of moves in this game
     MTE = random_idx0(L),                               % number of (end) moves (0..L-1) to throw away
+    sample_move(Space, IAliases, Moves, FAliases, FScores, MTE).
+
+sample_move(Space, IAliases, Moves, FAliases, FScores, MTE) ->
     {_, UsedMoves} = lists:split(MTE, Moves),             % used moves to construct the board (others thrown away)
     sample_board(Space, IAliases, lists:reverse(UsedMoves), FAliases, FScores, MTE).
 
@@ -318,6 +334,13 @@ sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) ->
     % One more move to aggregate into the board. 
     {ok, _, NewBoard} = put(false, Board, 0, Move, P),
     sample_board(NewBoard, IAliases, Moves, FAliases, FScores, MTE).
+
+-spec samples(binary(), [egAlias()], [egGameMove()], [egAlias()], [egScore()]) -> list().
+%% sample all moves out of a finished game, aliases and scores normalized to initial move order
+%% input: see sample
+%% output (as a list): list of samples, see sample
+samples(Space, IAliases, Moves, FAliases, FScores) ->
+    [sample_move(Space, IAliases, Moves, FAliases, FScores, MTE) || MTE <- lists:seq(0,length(Moves)-1)].
 
 -spec norm_aliases(binary(), [egAlias()], [egAlias()]) -> binary().
 %% transform a tictac board by swapping player aliases to a given next player

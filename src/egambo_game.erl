@@ -51,6 +51,7 @@
 
 -define(DEFAULT_ROLES, [
   {ddRole,system,[egambo,dderl],[manage_system,manage_accounts,manage_system_tables,manage_user_tables,{dderl,con,local,use}],[]}
+, {ddRole,dderl,[],[{dderl,restart},{dderl,conn,local,use},{dderl,conn,{owner,system},use},{dderl,conn,manage}],[]}
 , {ddRole,egambo,[],[{eval_mfa,egambo_game,create}
                     ,{eval_mfa,egambo_game,start}
                     ,{eval_mfa,egambo_game,cancel}
@@ -58,9 +59,21 @@
                     ,{eval_mfa,egambo_game,result}
                     ,{eval_mfa,egambo_game,resume}
                     ,{eval_mfa,egambo_game,moves}
-                    ,{eval_mfa,egambo_game,sample}
+                    ,{eval_mfa,egambo_tictac,sample}
+                    ,{eval_mfa,egambo_tictac,samples}
+                    ,{eval_mfa,egambo_tictac,history}
                     ],[]}
-, {ddRole,dderl,[],[{dderl,restart},{dderl,conn,local,use},{dderl,conn,{owner,system},use},{dderl,conn,manage}],[]}
+, {ddRole,ann,[],[{eval_mfa,egambo_tictac_ann,state}
+                 ,{eval_mfa,egambo_tictac_ann,start}
+                 ,{eval_mfa,egambo_tictac_ann,stop}
+                 ,{eval_mfa,egambo_tictac_ann,resume}
+                 ,{eval_mfa,egambo_tictac_ann,save}
+                 ,{eval_mfa,egambo_tictac_ann,start_learning}
+                 ,{eval_mfa,egambo_tictac_ann,start_playing}
+                 ,{eval_mfa,egambo_tictac_ann,ann_sample}
+                 ,{eval_mfa,egambo_tictac_ann,train}
+                 ,{eval_mfa,egambo_tictac_ann,test}
+                 ],[]}
 , {ddRole,0,[],[],[]}
 , {ddRole,1,[],[],[]}
 , {ddRole,2,[],[],[]}
@@ -206,7 +219,7 @@
         , play_bot/5        % trigger a bot to play one move (async)
         ]).
 
--safe([create, start, cancel, accept, play, result, resume, moves, time, sample]).
+-safe([create, start, cancel, accept, play, result, resume, moves, time]).
 
 %% stateful game management functions (run through gen_server for serializability)
 
