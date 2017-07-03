@@ -190,6 +190,8 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) -> % Network process
       ReplyPid ! {computed_error, Rss},
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + Examples);
     {learn_epochs, Epochs, LearningRate, TrainingSet} ->
+      io:format("Start ann Training.~n"),
+      % io:format("ann training set ~p ~n", [TrainingSet]),
       TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
       io:format("Done.~n"),
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
@@ -206,7 +208,8 @@ neural_network(InputLayer, OutputLayer, BiasNeurons, Token) -> % Network process
       ReplyPid ! training_done,
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);
     {train, Epochs, _ResErr, LearningRate, TrainingSet, ReplyPid} ->
-      io:format("Start Training.~n"),
+      io:format("Start ann Training.~n"),
+      % io:format("ann training set ~p at rate ~p~n", [TrainingSet, LearningRate]),
       TokenShift = learn_epochs(InputLayer, OutputLayer, BiasNeurons, Token, Epochs, LearningRate, TrainingSet),
       ReplyPid ! training_done,
       neural_network(InputLayer, OutputLayer, BiasNeurons, Token + TokenShift);

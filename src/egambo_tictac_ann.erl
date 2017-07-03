@@ -17,6 +17,7 @@
 -define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
 -define(ANN_NOT_LEARNING, {error, <<"Network is not in learning mode">>}).
 -define(ANN_NOT_PLAYING, {error, <<"Network is not in playing mode">>}).
+-define(ANN_BAD_RATE, {error, <<"Invalid learning rate for training">>}).
 
 -record(egTicTacAnnModel,   { tid               :: egGameTypeId()
                             , version = <<>>    :: binary()    % network version name
@@ -141,33 +142,34 @@ resume(GameTypeId) ->
 train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) ->
     train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, -1.0e100, 1).
 
-train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, LastKey, BatchId) -> 
+train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, LastKey, BatchId) when Rate > 0.0, Rate =< 1.0 -> 
     case read_samples(?ANN_TRAIN, GameTypeId, LastKey, BatchSize, QosMin, QosMax) of
         {[], true} -> 
             ok;
         {L, true} ->
-            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
-            TrainingSet = [ {ann_norm_input(I), O} || [_, _, I, O] <- L],
+            % ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            TrainingSet = [ {ann_norm_input(I), ann_norm_sample_output(O, QOS)} || [_Key, QOS, I, O] <- L],
             % ?Info("First Sample ~p", [hd(TrainingSet)]),
             % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity);
         {L, false} ->
-            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
-            TrainingSet = [ {ann_norm_input(I), O} || [_, _, I, O] <- L],
+            % ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            TrainingSet = [ {ann_norm_input(I), ann_norm_sample_output(O, QOS)} || [_Key, QOS, I, O] <- L],
             % ?Info("First Sample ~p", [hd(TrainingSet)]),
             % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
             case gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity) of
                 Err when is_tuple(Err) ->  Err;
                 ok -> train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, element(2, hd(lists:last(L))), BatchId+1)
             end
-    end.
+    end;
+train(_, _, _, _, _, _, _, _, _) ->  ?ANN_BAD_RATE.
 
 test(GameTypeId, QosMin, QosMax) ->
     case read_samples(?ANN_TEST, GameTypeId, -1.0e100, 1000000, QosMin, QosMax) of
         [[], true] -> 
             ?ANN_NO_TEST_SAMPLES;
         [L, _] ->
-            TestSet = [ {I, O} || {_, _, I, O} <- L],
+            TestSet = [ {ann_norm_input(I), ann_norm_sample_output(O, QOS)} || {_Key, QOS, I, O} <- L],
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {test, TestSet}, infinity)
     end.
 
@@ -231,7 +233,7 @@ ann_sample_list(GameTypeId, Input, Move, Score, MTE) ->
     end,
     F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
     Output = lists:map(F, lists:seq(0, length(Input)-1)),
-    Key = {GameTypeId, erlang:phash2(Input)},
+    Key = {GameTypeId, erlang:phash2(Input,4294967296)},
     case imem_meta:read(?ANN_TRAIN, Key) of
         [] ->   
             imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=Output}),
@@ -239,7 +241,7 @@ ann_sample_list(GameTypeId, Input, Move, Score, MTE) ->
         [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
             imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
             Output;
-        [#egTicTacAnnSample{qos=_N, input=OldInput, output=OldOut}] ->
+        [#egTicTacAnnSample{qos=_N, input=OldInput}] ->
             ?Info("input hash collision OldInput= ~p  NewInput=~p",[OldInput, Input]),
             % imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
             Output
@@ -251,7 +253,22 @@ ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
 vector_add(OldOut, Output) ->
     [Old + Out || {Old, Out} <- lists:zip(OldOut, Output)].
 
-ann_norm_input(L) -> [I/256.0 || I <- L].    
+ann_norm_input(L) -> [ann_norm_single_input(I) || I <- L].
+
+% ann_norm_single_input(32) -> 0.2;
+% ann_norm_single_input($X) -> 0.3;
+% ann_norm_single_input($O) -> 0.1;
+% ann_norm_single_input($*) -> 0.4;
+% ann_norm_single_input($$) -> 0.0;
+ann_norm_single_input(I) -> I/256.0.
+
+% ann_norm_sample_output(O, QOS) ->
+%     Fun = fun(W) -> 0.5*(1.0 + W/QOS) end,
+%     lists:map(Fun, O);
+ann_norm_sample_output(O, QOS) ->
+    Fun = fun(W) -> W/QOS end,
+    lists:map(Fun, O). 
+
 
 init([GameTypeId]) ->
     Result = try
@@ -267,8 +284,9 @@ init([GameTypeId]) ->
         Aliases=maps:get(aliases, Params), 
         {Layers, Network, Status, Version, Info} = case imem_meta:read(?ANN_MODEL, GameTypeId) of
             [] ->
-                L = layer_default(Width, Height, Run, Gravity, Periodic),  
-                {L, ann:create_neural_network(L),learning, <<>>, <<>>};
+                L = layer_default(Width, Height, Run, Gravity, Periodic),
+                ?Info("Creating random Layers ~p", [L]),  
+                {L, ann:create_neural_network(L), learning, <<>>, <<>>};
             [#egTicTacAnnModel{layers=L, weights=W, version=V, info=I}] ->
                 {L, ann:create_neural_network(L, lists:flatten(W)), playing, V, I}
         end,
@@ -343,6 +361,12 @@ handle_cast(Request, State) ->
     ?Info("Unsolicited handle_cast in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
 
+handle_info({'EXIT', Network, neural_network_shutdown}, #state{tid=GameTypeId, network=Network, status=playing} = State) -> 
+    ?Info("Network stopped in playing state for game type ~p  ~p",[?MODULE, GameTypeId]),
+    {noreply, State};
+handle_info({'EXIT', Network, neural_network_shutdown}, #state{tid=GameTypeId, network=Network} = State) -> 
+    ?Info("Network stopped for game type ~p  ~p",[?MODULE, GameTypeId]),
+    {noreply, State};
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
@@ -359,6 +383,7 @@ handle_call({predict, _}, _From, State) ->
 handle_call(start_playing, _From, State) ->
     {reply, ok, State#state{status=playing}};
 handle_call({train, Epochs, ResErr, Rate, TrainingSet}, _From, #state{network=Network, status=learning} = State) ->
+    % ?Info("training set ~p at rate ~p", [TrainingSet, Rate]),
     {reply, ann:train(Network, Epochs, ResErr, Rate, TrainingSet), State};
 handle_call({test, TestSet}, _From, #state{network=Network, status=learning} = State) ->
     {reply, ann:compute_error(Network, TestSet), State};
