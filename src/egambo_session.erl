@@ -17,10 +17,8 @@ request(#{<<"action">> := Action} = ReqArgs, ReplyFun) ->
     end).
 
 -spec process_request(binary(), fun(), map()) -> ok.
-process_request(<<"create_challenge">>, ReplyFun, #{<<"game">> := Game,
-    <<"category">> := Category, <<"board_parameters">> := BoardParameters,
-    <<"time_limit">> := TLimit}) ->
-    egambo_player:new_game(ReplyFun, Game, BoardParameters, Category, TLimit);
+process_request(<<"create_challenge">>, ReplyFun, #{<<"game">> := Game}) ->
+    egambo_player:new_game(ReplyFun, Game);
 process_request(<<"accept_challenge">>, #{<<"game_id">> := GameId}, ReplyFun) ->
     egambo_player:accept_challenge(ReplyFun, GameId);
 process_request(<<"cancel_challenge">>, #{<<"game_id">> := GameId}, ReplyFun) ->

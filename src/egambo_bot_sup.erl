@@ -1,4 +1,4 @@
--module(egambo_sup).
+-module(egambo_bot_sup).
 
 -behaviour(supervisor).
 
@@ -7,11 +7,6 @@
 
 %% Supervisor callbacks
 -export([init/1]).
-
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), #{id => I, start => {I, start_link, []},
-                                restart => permanent, shutdown => 5000,
-                                type => Type, modules => [I]}).
 
 %% ===================================================================
 %% API functions
@@ -25,13 +20,6 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok
-    , { {one_for_one, 5, 10}
-      , [ ?CHILD(egambo_game, worker)
-        , ?CHILD(egambo_session_sup, supervisor)
-        , ?CHILD(egambo_tictac_sup, supervisor)
-        , ?CHILD(egambo_bot_sup, supervisor)
-        ]
-      }
-    }.
+    %% Empty supervisor as bots are dynamically added as required.
+    {ok, {{one_for_one, 5, 10}, []}}.
 

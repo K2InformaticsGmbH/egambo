@@ -46,7 +46,7 @@
 % egambo_gen_engine behavior callbacks, used by eg_game (game manager)
 -export([ prepare/2     % initialize the game vector on behalf of the game manager (stateless)
         , resume/1      % instruct supervisor to start the game engine process and resume the game
-        , stop/1        % instruct supervisor to stop the game engine process (no attempt to save the state)
+        , stop/1        % instruct gen_server to stop the game engine process (no attempt to save the state)
         ]).
 
 % egambo_gen_game behavior callbacks (player originating requests)
@@ -213,24 +213,15 @@ prepare( #egGameType{ players=2
 
 -spec resume(egGameId()) -> ok | egGameError().
 resume(GameId) ->
-    ChildSpec = { ?ENGINE_ID(GameId)                                    % ChildId
-                , {?MODULE, start_link, [GameId]}                       % {M,F,A}
-                , temporary                                             % do not restart automatically
-                , 1000                                                  % Shutdown timeout
-                , worker                                                % Type
-                , [?MODULE]                                             % Modules
-                },
-    case supervisor:start_child(egambo_sup, ChildSpec) of
-        {ok,_} ->                       ok;
-        {ok,_,_} ->                     ok;
-        {error, already_present} ->     ok;
-        {error,{already_started,_}} ->  ok;
-        Error ->                        Error
+    case egambo_tictac_sup:start_game(GameId) of
+        {ok,_} ->                      ok;
+        {error,{already_started,_}} -> ok;
+        Error ->                       Error
     end.
 
 -spec stop(egGameId()) -> ok | egGameError().
 stop(GameId) ->
-    supervisor:terminate_child(egambo_sup, ?ENGINE_ID(GameId)).
+    gen_server:call(?ENGINE_GID(GameId), stop).
 
 result( #state{gid=GameId, width=Width, height=Height, run=Run, gravity=Gravity, periodic=Periodic, status=Status, etime=EndTime, board=Board, nmovers=Movers, naliases=Aliases, nscores=Scores}) ->
     #{id=>GameId, etime=>?EG_SEC(EndTime), width=>Width, height=>Height, run=>Run, gravity=>Gravity, periodic=>Periodic, status=>Status, board=>Board, movers=>Movers, aliases=>Aliases, scores=>Scores};
