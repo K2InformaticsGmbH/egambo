@@ -37,7 +37,8 @@
 -define(NETWORK_CHANNEL, <<"connect_four_network">>).
 -define(LEARNING_RATE, 0.05).
 
--define(NETWORK_NAME, "all_data_tf_500").
+%-define(NETWORK_NAME, "all_data_tf_500").
+-define(NETWORK_NAME, "all_data_relu_220").
 -define(NETWORK_LAYERS, [42,128,256,72,1]).
 %-define(NETWORK_LAYERS, [42,128,512,108,1]).
 
@@ -57,7 +58,7 @@ resume(GameTypeId) ->
                 , worker                                        % Type
                 , [?MODULE]                                     % Modules
                 },
-    case supervisor:start_child(egambo_sup, ChildSpec) of
+    case supervisor:start_child(egambo_bot_sup, ChildSpec) of
         {ok,_} ->                       ok;
         {ok,_,_} ->                     ok;
         {error, already_present} ->     ok;
@@ -92,9 +93,10 @@ start(Name) when is_list(Name) ->
 start(Name, Layers) ->
     gen_server:start(?MODULE, [Name, Layers], []).
 
--spec stop(pid()) -> ok.
-stop(BotId) ->
-    gen_server:stop(BotId).
+-spec stop(egBotId()) -> ok.
+stop(GameTypeId) ->
+    supervisor:terminate_child(egambo_bot_sup, ?BOT_ID(?MODULE, GameTypeId)),
+    supervisor:delete_child(egambo_bot_sup, ?BOT_ID(?MODULE, GameTypeId)).
 
 -spec new_game(pid()) -> integer().
 new_game(BotId) ->
@@ -282,7 +284,7 @@ save(Id, NN) ->
 -spec init_network([integer()], [float()]) -> pid() | {error, binary()}.
 init_network([42 | Rest] = Layers, Weights) ->
     case lists:last(Rest) of
-        1 -> ann:create_neural_network(Layers, Weights);
+        1 -> ann:create_neural_network(Layers, Weights, relu);
         _ -> {error, <<"Output layer must contain only one neuron">>}
     end;
 init_network(_, _) -> {error, <<"Input layer must contain 42 neuros">>}.

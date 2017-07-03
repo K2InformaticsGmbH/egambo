@@ -10,6 +10,7 @@
 
 -record(state, {ip, port, srv}).
 
+%% Callbacks
 init(IP, Port, Srv) ->
     ?Info("peer connected ~s:~p", [inet:ntoa(IP), Port]),
     {ok, #state{ip = IP, port = Port, srv = Srv}}.
@@ -33,3 +34,11 @@ terminate(Reason, #state{ip = IP, port = Port}) ->
     ?Info("terminate ~s:~p : ~p", [inet:ntoa(IP), Port, Reason]).
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+%% End Callbacks
+
+-spec build_reply_fun(pid()) -> fun().
+build_reply_fun(Self) ->
+    fun(Reply) ->
+        Self ! {reply, jsx:encode(Reply)}
+    end.
