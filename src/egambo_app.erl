@@ -16,7 +16,7 @@ start(_StartType, _StartArgs) ->
     ?Info("STARTING EGAMBO"),
     Routes = egambo:get_routes(),
     ok = dderl:insert_routes(https, cowboy_router:compile([{'_', Routes}])),
-    % ok = egambo:start_tpcjson_listener(),
+    ok = egambo:start_tpcjson_listener(),
     case egambo_sup:start_link() of
         {ok, SupRes} ->
             ?Info("EGAMBO STARTED"),
