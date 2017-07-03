@@ -39,6 +39,10 @@
 -export([ state/1
         ]).
 
+-export([ play_bot_immediate_win/9
+        , play_bot_defend_immediate/9
+        ]).
+
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
 
@@ -170,7 +174,7 @@ play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Ali
 play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
 play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-    case WinMod:win(TestBoard, Others) of
+    case egambo_tictac:is_win(WinMod, TestBoard, Others) of
         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.

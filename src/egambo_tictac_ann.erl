@@ -95,10 +95,15 @@
         , save/1
         , save/2
         , save/3
-        , ann_sample/3
+        , ann_sample/7
+        , ann_samples/7
         , read_samples/6
         , predict/2
         , pick_output/5
+        ]).
+
+-export([ play_bot_immediate_win/9
+        , play_bot_defend_immediate/9
         ]).
 
 % egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
@@ -111,7 +116,7 @@
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
--safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, train, test]).
+-safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, ann_samples, train, test]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -204,7 +209,21 @@ read_samples(TableName, GameTypeId, LastKey, Limit, QosMin, QosMax) ->
 match_val(T) when is_tuple(T) -> {const,T};
 match_val(V) -> V.
 
-ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) ->
+% ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) ->
+%     QOS = if 
+%         Score >= 0.0 ->  Score/(MTE div 2 +1);
+%         Score == 0.0 ->  0;
+%         true -> Score/((MTE+1) div 2)
+%     end,
+%     F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
+%     Output = lists:map(F, lists:seq(0, length(Input)-1)),
+%     #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=QOS, input=Input, output=Output}.
+
+ann_sample(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
+    [Input, _Players, Move, [Score|_], MTE] = egambo_tictac:sample(Space, Ialiases, Moves, Naliases, Nscores),
+    ann_sample_list(GameTypeId, Input, Move, Score, MTE).
+
+ann_sample_list(GameTypeId, Input, Move, Score, MTE) ->
     QOS = if 
         Score >= 0.0 ->  Score/(MTE div 2 +1);
         Score == 0.0 ->  0;
@@ -212,7 +231,25 @@ ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) ->
     end,
     F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
     Output = lists:map(F, lists:seq(0, length(Input)-1)),
-    #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=QOS, input=Input, output=Output}.
+    Key = {GameTypeId, erlang:phash2(Input)},
+    case imem_meta:read(?ANN_TRAIN, Key) of
+        [] ->   
+            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=Output}),
+            Output;
+        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
+            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
+            Output;
+        [#egTicTacAnnSample{qos=_N, input=OldInput, output=OldOut}] ->
+            ?Info("input hash collision OldInput= ~p  NewInput=~p",[OldInput, Input]),
+            % imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
+            Output
+    end.
+
+ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
+    [ ann_sample_list(GameTypeId, Input, Move, Score, MTE) || [Input, _Players, Move, [Score|_], MTE] <- egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores)].
+
+vector_add(OldOut, Output) ->
+    [Old + Out || {Old, Out} <- lists:zip(OldOut, Output)].
 
 ann_norm_input(L) -> [I/256.0 || I <- L].    
 
@@ -363,7 +400,7 @@ put_options(Board, Width, true) ->
 play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
 play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
-    case WinMod:win(TestBoard, Aliases) of
+    case egambo_tictac:is_win(WinMod, TestBoard, Aliases) of
         true ->     {ok, Idx, TestBoard};
         false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
     end.
@@ -372,7 +409,7 @@ play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Ali
 play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
 play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-    case WinMod:win(TestBoard, Others) of
+    case egambo_tictac:is_win(WinMod, TestBoard, Others) of
         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.
