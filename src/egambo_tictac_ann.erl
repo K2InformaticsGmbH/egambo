@@ -13,11 +13,16 @@
 -define(ANN_TRAIN_OPTS, [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
 -define(ANN_TEST_OPTS,  [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
 
+-define(ANN_ACTIVATION, sigmoid).   % relu or sigmoid
+-define(ANN_HIDDEN_BREATH, 2.0).    % Number of neurons in hidden layer = ROUND(board size * ?ANN_HIDDEN_BREATH)
+-define(ANN_EXTRA_LAYERS, 2).       % Number of total layers = board width + ?ANN_EXTRA_LAYERS (inluding Input and Output Layers)
+
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
 -define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
 -define(ANN_NOT_LEARNING, {error, <<"Network is not in learning mode">>}).
 -define(ANN_NOT_PLAYING, {error, <<"Network is not in playing mode">>}).
 -define(ANN_BAD_RATE, {error, <<"Invalid learning rate for training">>}).
+
 
 -record(egTicTacAnnModel,   { tid               :: egGameTypeId()
                             , version = <<>>    :: binary()    % network version name
@@ -105,6 +110,8 @@
 
 -export([ play_bot_immediate_win/9
         , play_bot_defend_immediate/9
+        , ann_norm_input/1
+        , ann_norm_sample_output/2
         ]).
 
 % egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
@@ -113,11 +120,11 @@
 % egambo_tictac_ann:train(GameTypeId           , Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) 
 % egambo_tictac_ann:save(<<"tic_tac_toe_443">> , <<"V0.1">>,<<"First Attempt for Learning">>). 
 % egambo_tictac_ann:stop(<<"tic_tac_toe_443">>).
-% egambo_tictac_ann:predict(<<"tic_tac_toe_443">>, ).
+% egambo_tictac_ann:predict(<<"tic_tac_toe_443">>,"XXO  OO   XO   X").
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
--safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, ann_samples, train, test]).
+-safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, ann_samples, train, test, ann_norm_input, ann_norm_sample_output]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -255,11 +262,11 @@ vector_add(OldOut, Output) ->
 
 ann_norm_input(L) -> [ann_norm_single_input(I) || I <- L].
 
-% ann_norm_single_input(32) -> 0.2;
-% ann_norm_single_input($X) -> 0.3;
-% ann_norm_single_input($O) -> 0.1;
-% ann_norm_single_input($*) -> 0.4;
-% ann_norm_single_input($$) -> 0.0;
+ann_norm_single_input(32) -> 0.0;
+ann_norm_single_input($X) -> 1.0;
+ann_norm_single_input($O) -> -1.0;
+ann_norm_single_input($*) -> 0.5;
+ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 % ann_norm_sample_output(O, QOS) ->
@@ -268,7 +275,6 @@ ann_norm_single_input(I) -> I/256.0.
 ann_norm_sample_output(O, QOS) ->
     Fun = fun(W) -> W/QOS end,
     lists:map(Fun, O). 
-
 
 init([GameTypeId]) ->
     Result = try
@@ -286,9 +292,9 @@ init([GameTypeId]) ->
             [] ->
                 L = layer_default(Width, Height, Run, Gravity, Periodic),
                 ?Info("Creating random Layers ~p", [L]),  
-                {L, ann:create_neural_network(L), learning, <<>>, <<>>};
+                {L, ann:create_neural_network(L, ?ANN_ACTIVATION), learning, <<>>, <<>>};
             [#egTicTacAnnModel{layers=L, weights=W, version=V, info=I}] ->
-                {L, ann:create_neural_network(L, lists:flatten(W)), playing, V, I}
+                {L, ann:create_neural_network(L, lists:flatten(W), ?ANN_ACTIVATION), playing, V, I}
         end,
         State = #state{ bid=?MODULE 
                       , tid=GameTypeId
@@ -317,7 +323,7 @@ init([GameTypeId]) ->
 layer_default(3=Width, Height, _Run, _Gravity, _Periodic) ->
     [Width*Height|[Width*Height || _ <- lists:seq(1, Width)]];
 layer_default(Width, Height, _Run, _Gravity, _Periodic) ->
-    [Width*Height|[Width*Height || _ <- lists:seq(2, Width)]].
+    [Width*Height|[round(Width*Height*?ANN_HIDDEN_BREATH) || _ <- lists:seq(3, Width + ?ANN_EXTRA_LAYERS)]] ++ [Width*Height].
 
 start_link(GameTypeId)  ->
     gen_server:start_link(?BOT_GID(?MODULE, GameTypeId), ?MODULE, [GameTypeId], []).
@@ -377,7 +383,10 @@ handle_call(finish, _From, #state{network=Network} = State) ->
 handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
 handle_call({predict, NormBoard}, _From, #state{network=Network, status=playing} = State) ->
-    {reply, ann:predict(Network, ann_norm_input(NormBoard)), State};
+    NormIn = ann_norm_input(NormBoard),
+    Out = ann:predict(Network, NormIn),
+    ?Info("Network ~p ~p ~p ",[Network, NormIn, Out]),
+    {reply, Out, State};
 handle_call({predict, _}, _From, State) ->
     {reply, ?ANN_NOT_PLAYING, State};
 handle_call(start_playing, _From, State) ->
