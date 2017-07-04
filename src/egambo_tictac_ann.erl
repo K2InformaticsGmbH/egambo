@@ -147,13 +147,13 @@ train(GameTypeId, Epochs, ResErr, Rate, QosMin, QosMax, BatchSize, LastKey, Batc
         {[], true} -> 
             ok;
         {L, true} ->
-            % ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
             TrainingSet = [ {ann_norm_input(I), ann_norm_sample_output(O, QOS)} || [_Key, QOS, I, O] <- L],
             % ?Info("First Sample ~p", [hd(TrainingSet)]),
             % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {train, Epochs, ResErr, Rate, TrainingSet}, infinity);
         {L, false} ->
-            % ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
+            ?Info("Training ann for batch ~p of length ~p and game type ~s", [BatchId, length(L), GameTypeId]),
             TrainingSet = [ {ann_norm_input(I), ann_norm_sample_output(O, QOS)} || [_Key, QOS, I, O] <- L],
             % ?Info("First Sample ~p", [hd(TrainingSet)]),
             % ?Info("Last Sample ~p", [lists:last(TrainingSet)]),
