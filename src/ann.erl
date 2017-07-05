@@ -9,11 +9,16 @@ relu(X) -> max(0.0, X).
 relu_grad(X) when X =< 0 -> 0.0;
 relu_grad(_X) -> 1.0.
 
+tanh(X) -> math:tanh(X).
+tanh_grad(X) -> 1 - X * X.
+
 activation(sigmoid, X) -> sigmoid(X);
-activation(relu, X) -> relu(X).
+activation(relu, X) -> relu(X);
+activation(tanh, X) -> tanh(X).
 
 activation_gradient(sigmoid, X) -> sigmoid_grad(X);
-activation_gradient(relu, X) -> relu_grad(X).
+activation_gradient(relu, X) -> relu_grad(X);
+activation_gradient(tanh, X) -> tanh_grad(X).
 
 output_activation(X) -> X.
 
