@@ -15,7 +15,8 @@
 
 -define(ANN_ACTIVATION, sigmoid).   % relu or sigmoid
 -define(ANN_HIDDEN_BREATH, 2.0).    % Number of neurons in hidden layer = ROUND(board size * ?ANN_HIDDEN_BREATH)
--define(ANN_EXTRA_LAYERS, 2).       % Number of total layers = board width + ?ANN_EXTRA_LAYERS (inluding Input and Output Layers)
+-define(ANN_EXTRA_LAYERS, 0).       % Number of total layers = board width + ?ANN_EXTRA_LAYERS (inluding Input and Output Layers)
+-define(ANN_OUTPUT_SCALE, 0.2).     % Full output swing: -?ANN_OUTPUT_SCALE .. +?ANN_OUTPUT_SCALE
 
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
 -define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
@@ -273,7 +274,7 @@ ann_norm_single_input(I) -> I/256.0.
 %     Fun = fun(W) -> 0.5*(1.0 + W/QOS) end,
 %     lists:map(Fun, O);
 ann_norm_sample_output(O, QOS) ->
-    Fun = fun(W) -> W/QOS end,
+    Fun = fun(W) -> ?ANN_OUTPUT_SCALE * W/QOS end,
     lists:map(Fun, O). 
 
 init([GameTypeId]) ->
@@ -384,8 +385,9 @@ handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
 handle_call({predict, NormBoard}, _From, #state{network=Network, status=playing} = State) ->
     NormIn = ann_norm_input(NormBoard),
+    % ?Info("Network Input ~p ~p ",[Network, NormIn]),
     Out = ann:predict(Network, NormIn),
-    ?Info("Network ~p ~p ~p ",[Network, NormIn, Out]),
+    % ?Info("Network Output ~p ~p ",[Network, Out]),
     {reply, Out, State};
 handle_call({predict, _}, _From, State) ->
     {reply, ?ANN_NOT_PLAYING, State};
@@ -452,11 +454,10 @@ play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, 
 play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) ->
     % ?Info("play_bot_ann Board ~p ~p",[Board, NAliases]),
     NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
-    % ?Info("play_bot_ann NormBoard ~p",[NormBoard]),
-    Input = ann_norm_input(binary_to_list(NormBoard)),
-    % ?Info("play_bot_ann Input ~p",[Input]),
-    Output = ann:predict(Network, Input),
-    % ?Info("play_bot_ann Output ~p",[Output]),
+    NormIn = ann_norm_input(binary_to_list(NormBoard)),
+    % ?Info("Network Input ~p ~p ",[Network, NormIn]),
+    Output = ann:predict(Network, NormIn),
+    % ?Info("Network Output ~p ~p ",[Network, Output]),    
     {ok, Idx, NewBoard} = pick_output(Output, Board, Width, Gravity, Player),
     % ?Info("play_bot_ann ~p NewBoard ~p",[Idx, binary_to_list(NewBoard)]),    
     {ok, Idx, NewBoard}.

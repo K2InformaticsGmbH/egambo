@@ -2,7 +2,10 @@
 -module(ann).
 -compile([export_all]).
 
+sigmoid(X) when X < -100.0 -> 0.0;
+sigmoid(X) when X > -100.0 -> 1;
 sigmoid(X) -> 1.0 / (1.0 + math:exp(-X)).
+
 sigmoid_grad(X) -> X * (1.0 - X).
 
 relu(X) -> max(0.0, X).
