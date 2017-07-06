@@ -6,12 +6,14 @@ SET nid=%1
 SET cid=%2
 SET port=%3
 SET dderlport=%4
+SET etcpjsonport=%5
 
-IF "%4" == "" (
+IF "%5" == "" (
    SET nid=1
    SET cid=2
    SET port=1236
    SET dderlport=8449
+   SET etcpjsonport=8559
 )
 
 IF NOT "%5" == "" (
@@ -19,18 +21,15 @@ IF NOT "%5" == "" (
    SET cid=2
    SET port=1236
    SET dderlport=8449
+   SET etcpjsonport=8559
 )
 
 SET unamestr=%USERNAME%
-SET host=Hostname
-REM SET hostArrayIn=(${host//./ })
-REM SET host=${hostArrayIn[0]}
 SET host=127.0.0.1
-
-SET name=dderl%nid%@%host%
-SET cmname=dderl%cid%@%host%
+SET name=egambo%nid%@%host%
+SET cmname=egambo%cid%@%host%
 SET imemtyp=disc
-SET ck=dderl
+SET ck=egambo
 
 REM Node name
 SET node_name=-name %name%
@@ -45,10 +44,10 @@ SET paths=%paths% %cd%\_build\default\lib\cowlib\ebin
 SET paths=%paths% %cd%\_build\default\lib\dderl\ebin
 SET paths=%paths% %cd%\_build\default\lib\egambo\ebin
 SET paths=%paths% %cd%\_build\default\lib\erlimem\ebin
-SET paths=%paths% %cd%\_build\default\lib\erloci\ebin
 SET paths=%paths% %cd%\_build\default\lib\erlpkg\ebin
 SET paths=%paths% %cd%\_build\default\lib\erlscrypt\ebin
 SET paths=%paths% %cd%\_build\default\lib\esaml\ebin
+SET paths=%paths% %cd%\_build\default\lib\etcpjson\ebin
 SET paths=%paths% %cd%\_build\default\lib\goldrush\ebin
 SET paths=%paths% %cd%\_build\default\lib\imem\ebin
 SET paths=%paths% %cd%\_build\default\lib\jpparse\ebin
@@ -77,13 +76,21 @@ SET imem_opts=%imem_opts% tcp_port %port%
 
 REM dderl opts
 SET dderl_opts=-dderl
-SET dderl_opts=%dderl_opts% port %dderlport%
+SET dderl_opts=%dderl_opts% interface '0.0.0.0' port %dderlport%
 
-SET start_opts=%paths% %cookie% %node_name% %dist_opts% %kernel_opts% %imem_opts% %dderl_opts%
+REM sasl opts
+SET sasl_opts=-sasl
+SET sasl_opts=%sasl_opts% sasl_error_logger false
 
-REM DDERL start options
+REM etcpjson opts
+SET etcpjson_opts=-etcpjson
+SET etcpjson_opts=%etcpjson_opts% interface '0.0.0.0' port %etcpjsonport%
+
+SET start_opts=%paths% %cookie% %node_name% %dist_opts% %kernel_opts% %imem_opts% %dderl_opts% %sasl_opts% %etcpjson_opts%
+
+REM egambo start options
 ECHO ------------------------------------------
-ECHO Starting DDERL (Opts)
+ECHO Starting egambo (Opts)
 ECHO ------------------------------------------
 ECHO Node Name : %node_name%
 ECHO Cookie    : %cookie%
@@ -92,7 +99,9 @@ ECHO Dist      : %dist_opts%
 ECHO Kernel    : %kernel_opts%
 ECHO IMEM      : %imem_opts%
 ECHO DDERL     : %dderl_opts%
+ECHO SASL      : %sasl_opts%
+ECHO ETCPJSON  : %etcpjson_opts%
 ECHO ------------------------------------------
 
-REM Starting dderl
+REM Starting egambo
 START /MAX werl %start_opts% -s egambo
