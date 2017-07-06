@@ -80,6 +80,7 @@ echo "Kernel    : $kernel_opts"
 echo "IMEM      : $imem_opts"
 echo "DDERL     : $dderl_opts"
 echo "SASL      : $sasl_opts"
+echo "ETCPJSON  : $etcpjson_opts"
 echo "------------------------------------------"
 
 # Starting egambo
