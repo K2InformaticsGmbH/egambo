@@ -13,10 +13,12 @@
 -define(ANN_TRAIN_OPTS, [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
 -define(ANN_TEST_OPTS,  [{record_name, egTicTacAnnSample}, {type, ordered_set}]).        
 
--define(ANN_ACTIVATION, sigmoid).   % relu or sigmoid
 -define(ANN_HIDDEN_BREATH, 2.0).    % Number of neurons in hidden layer = ROUND(board size * ?ANN_HIDDEN_BREATH)
 -define(ANN_EXTRA_LAYERS, 0).       % Number of total layers = board width + ?ANN_EXTRA_LAYERS (inluding Input and Output Layers)
--define(ANN_OUTPUT_SCALE, 0.2).     % Full output swing: -?ANN_OUTPUT_SCALE .. +?ANN_OUTPUT_SCALE
+-define(ANN_ACTIVATION, tanh).      % tanh, relu or sigmoid
+-define(ANN_OUTPUT_TARGET, 1.0).    % Output swing of 'most important move' (should correlate to point of max. nonlinearity of AF)
+-define(ANN_OUTPUT_MTE, 4.0).       % Optimize for sensitivity for move 4 before the end of the game (4 more half-moves to end)
+
 
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
 -define(ANN_BAD_OUTPUT, {error, <<"Bad Network Output">>}).
@@ -107,6 +109,7 @@
         , read_samples/6
         , predict/2
         , pick_output/5
+        , norm/1
         ]).
 
 -export([ play_bot_immediate_win/9
@@ -125,7 +128,7 @@
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
--safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, ann_samples, train, test, ann_norm_input, ann_norm_sample_output]).
+-safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, norm, ann_samples, train, test, ann_norm_input, ann_norm_sample_output]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -219,44 +222,62 @@ read_samples(TableName, GameTypeId, LastKey, Limit, QosMin, QosMax) ->
 match_val(T) when is_tuple(T) -> {const,T};
 match_val(V) -> V.
 
-% ann_sample(GameTypeId, GameId, [Input, _Players, Move, [Score|_], MTE]) ->
-%     QOS = if 
-%         Score >= 0.0 ->  Score/(MTE div 2 +1);
-%         Score == 0.0 ->  0;
-%         true -> Score/((MTE+1) div 2)
-%     end,
-%     F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
-%     Output = lists:map(F, lists:seq(0, length(Input)-1)),
-%     #egTicTacAnnSample{skey={GameTypeId, GameId}, qos=QOS, input=Input, output=Output}.
 
+%% Sample one random move out of a game into the training table
+%% and aggregate into the training table using an input hash
 ann_sample(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
     [Input, _Players, Move, [Score|_], MTE] = egambo_tictac:sample(Space, Ialiases, Moves, Naliases, Nscores),
-    ann_sample_list(GameTypeId, Input, Move, Score, MTE).
+    ann_sample_single(GameTypeId, Input, Move, Score, MTE).
 
-ann_sample_list(GameTypeId, Input, Move, Score, MTE) ->
-    QOS = if 
-        Score >= 0.0 ->  Score/(MTE div 2 +1);
-        Score == 0.0 ->  0;
-        true -> Score/((MTE+1) div 2)
-    end,
-    F = fun(I) -> if I==Move -> QOS; true -> 0 end end, 
+%% Sample all moves of a game into the training table (ok to do as long as we have enough ramdomness)
+%% and aggregate into the training table using an input hash
+ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
+    [ ann_sample_single(GameTypeId, Input, Move, Score, MTE) || 
+        [Input, _Players, Move, [Score|_], MTE] <- egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores)
+    ].
+
+%% Format a single sample for ann use (Board size input vector, Board size output vector)
+%% and aggregate into the training table using an input hash
+ann_sample_single(GameTypeId, Input, Move, Score, MTE) ->
+    Gain = ann_sample_gain(length(Input), Score, MTE),
+    F = fun(I) -> if I==Move -> Gain; true -> 0 end end, 
     Output = lists:map(F, lists:seq(0, length(Input)-1)),
-    Key = {GameTypeId, erlang:phash2(Input,4294967296)},
+    Hash = erlang:phash2(Input, 4294967296),
+    Key = {GameTypeId, Hash},
     case imem_meta:read(?ANN_TRAIN, Key) of
         [] ->   
-            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=Output}),
-            Output;
+            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
+                                            , qos=1, input=Input, output=Output}),
+            {Hash, Output};
         [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
-            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
-            Output;
-        [#egTicTacAnnSample{qos=_N, input=OldInput}] ->
-            ?Info("input hash collision OldInput= ~p  NewInput=~p",[OldInput, Input]),
-            % imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}),
-            Output
+            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
+                                            , qos=N+1, input=Input
+                                            , output=vector_add(OldOut, Output)}),
+            {Hash, Output};
+        _ ->
+            % hash collision detected, try to escape to negative hash
+            AltKey = {GameTypeId, -Hash},
+            case imem_meta:read(?ANN_TRAIN, AltKey) of
+                [] ->   
+                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey, qos=1, input=Input, output=Output}),
+                    {-Hash, Output};
+                [#egTicTacAnnSample{qos=AN, input=Input, output=AltOut}] ->
+                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey, qos=AN+1, input=Input, output=vector_add(AltOut, Output)}),
+                    {-Hash, Output};
+                [#egTicTacAnnSample{input=CollInput}] ->
+                    ?Info("Unrecoverable input hash collision OldInput= ~p  NewInput=~p ignored",[CollInput, Input]),
+                    {0, Output}
+            end
     end.
 
-ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
-    [ ann_sample_list(GameTypeId, Input, Move, Score, MTE) || [Input, _Players, Move, [Score|_], MTE] <- egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores)].
+%% Output (gain) of a single sample output item depending on the MTE (moves to end)
+%% An MTE of 0 (a win) is placed somewhat above the higest sensitivity of the AF
+%% An MTE of 1 (a loose/tie) is placed somewhat below higest sensitivity in the negative
+%% A (roughly) symmetric AF around the origin is assumed here
+ann_sample_gain(BoardSize, Score, MTE) when Score >= 0.0 ->
+    ?ANN_OUTPUT_TARGET * Score * (BoardSize-MTE) / (BoardSize-?ANN_OUTPUT_MTE);
+ann_sample_gain(BoardSize, Score, MTE) ->
+    ?ANN_OUTPUT_TARGET * Score * (BoardSize-MTE+1) / (BoardSize-?ANN_OUTPUT_MTE).
 
 vector_add(OldOut, Output) ->
     [Old + Out || {Old, Out} <- lists:zip(OldOut, Output)].
@@ -270,12 +291,17 @@ ann_norm_single_input($*) -> 0.5;
 ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
-% ann_norm_sample_output(O, QOS) ->
-%     Fun = fun(W) -> 0.5*(1.0 + W/QOS) end,
-%     lists:map(Fun, O);
-ann_norm_sample_output(O, QOS) ->
-    Fun = fun(W) -> ?ANN_OUTPUT_SCALE * W/QOS end,
-    lists:map(Fun, O). 
+ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
+    Fac = 1.0 / norm(AggregatedOutputVector),
+    Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
+    lists:map(Fun, AggregatedOutputVector). 
+% ann_norm_sample_output(AggregatedOutputVector, QOS) ->
+%     Fun = fun(W) -> W/QOS end,  % Average over all Samples
+%     lists:map(Fun, AggregatedOutputVector). 
+
+norm(Vector) -> 
+    Fun = fun(W, Acc) -> W*W+Acc end,
+    math:sqrt(lists:foldl(Fun, 0.0, Vector)).
 
 init([GameTypeId]) ->
     Result = try

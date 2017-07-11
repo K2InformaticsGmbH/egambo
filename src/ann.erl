@@ -2,26 +2,34 @@
 -module(ann).
 -compile([export_all]).
 
-sigmoid(X) when X < -100.0 -> 0.0;
-sigmoid(X) when X > -100.0 -> 1;
-sigmoid(X) -> 1.0 / (1.0 + math:exp(-X)).
+-define(ANN_TWISTING_TERM, 0.001).
 
-sigmoid_grad(X) -> X * (1.0 - X).
+sigmoid(X) when X < -100.0 -> 0.0;
+sigmoid(X) when X >  100.0 -> 1;
+sigmoid(X) -> 1.0 / (1.0 + math:exp(-X)).
+sigmoid_grad(Y) -> Y * (1.0 - Y).
 
 relu(X) -> max(0.0, X).
-relu_grad(X) when X =< 0 -> 0.0;
-relu_grad(_X) -> 1.0.
+relu_grad(Y) when Y =< 0 -> 0.0;
+relu_grad(_Y) -> 1.0.
 
 tanh(X) -> math:tanh(X).
-tanh_grad(X) -> 1 - X * X.
+tanh_grad(Y) -> 1 - Y * Y.
 
+tanh1(X) -> 1.7159 * math:tanh(0.6666666666666666*X) + ?ANN_TWISTING_TERM * X.    % a*tanh(bx)+cx 
+tanh1_grad(Y) when Y >= 1.7159 -> ?ANN_TWISTING_TERM;
+tanh1_grad(Y) when Y =< -1.7159 -> ?ANN_TWISTING_TERM;
+tanh1_grad(Y) -> ?ANN_TWISTING_TERM + 1.1439333333333332 - 0.3885230297025856*Y*Y.  % c+ab-b*y*y/a (approximation)
+
+activation(tanh1, X) -> tanh1(X);
+activation(tanh, X) -> tanh(X);
 activation(sigmoid, X) -> sigmoid(X);
-activation(relu, X) -> relu(X);
-activation(tanh, X) -> tanh(X).
+activation(relu, X) -> relu(X).
 
-activation_gradient(sigmoid, X) -> sigmoid_grad(X);
-activation_gradient(relu, X) -> relu_grad(X);
-activation_gradient(tanh, X) -> tanh_grad(X).
+activation_gradient(tanh1, Y) -> tanh1_grad(Y);
+activation_gradient(tanh, Y) -> tanh_grad(Y);
+activation_gradient(sigmoid, Y) -> sigmoid_grad(Y);
+activation_gradient(relu, Y) -> relu_grad(Y).
 
 output_activation(X) -> X.
 
