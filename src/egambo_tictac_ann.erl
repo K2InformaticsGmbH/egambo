@@ -142,7 +142,7 @@ resume(GameTypeId) ->
                 , worker                                        % Type
                 , [?MODULE]                                     % Modules
                 },
-    case supervisor:start_child(egambo_sup, ChildSpec) of
+    case supervisor:start_child(egambo_bot_sup, ChildSpec) of
         {ok,_} ->                       ok;
         {ok,_,_} ->                     ok;
         {error, already_present} ->     ok;
@@ -190,8 +190,8 @@ predict(GameTypeId, NormBoard) ->
 -spec stop(egBotId()) -> ok | egGameError().
 stop(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), finish), 
-    supervisor:terminate_child(egambo_sup, ?BOT_ID(?MODULE, GameTypeId)),
-    supervisor:delete_child(egambo_sup, ?BOT_ID(?MODULE, GameTypeId)).
+    supervisor:terminate_child(egambo_bot_sup, ?BOT_ID(?MODULE, GameTypeId)),
+    supervisor:delete_child(egambo_bot_sup, ?BOT_ID(?MODULE, GameTypeId)).
 
 state(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), state). 
