@@ -292,9 +292,19 @@ ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-    Fac = 1.0 / norm(AggregatedOutputVector),
+    Fac = case norm(AggregatedOutputVector) of
+        0.0 ->      0.0;
+        0 ->        0.0;
+        Norm ->     1.0 / Norm
+    end,
     Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
     lists:map(Fun, AggregatedOutputVector). 
+
+% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
+%   Fac = 1.0 / norm(AggregatedOutputVector),
+%   Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
+%   lists:map(Fun, AggregatedOutputVector). 
+
 % ann_norm_sample_output(AggregatedOutputVector, QOS) ->
 %     Fun = fun(W) -> W/QOS end,  % Average over all Samples
 %     lists:map(Fun, AggregatedOutputVector). 
