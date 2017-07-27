@@ -158,8 +158,68 @@ state(GameTypeId) ->
 random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
 
 -spec play_bot_random(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {error, atom()}.
-play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Player|_], Options) ->
-    egambo_tictac:put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player).
+play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Player|_], Options) when length(Options)==size(Board) ->
+    egambo_tictac:put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player);
+play_bot_random(Board, Width, Height, _Run, Gravity, Periodic, _WinMod, [Player|Others], Options) ->
+    Idx = case random_idx1(3) of
+        1 -> % truly random
+            lists:nth(random_idx1(length(Options)), Options);
+        2 -> % maximum connectivity = minimum availability connectivity
+            ObNC = opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, hd(Others)),
+            % ?Info("ObNC others ~p",[ObNC]),
+            element(2, lists:last(ObNC));
+        3 -> % maximum own connectivity
+            ObNC = opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player),
+            % ?Info("ObNC Player ~p",[ObNC]),
+            element(2, lists:last(ObNC))
+    end,
+    egambo_tictac:put(Gravity, Board, Width, Idx, Player).
+
+opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player) ->
+    opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player,[]).
+
+opts_by_neighbour_count(_, _, _, _, _, [], _, Acc) -> lists:sort(Acc);
+opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, [Opt|Options], Player, Acc) ->
+    Next = {{sig(neighbour_count(Board, Width, Height, Gravity, Periodic, Opt, Player)), rand:uniform()}, Opt}, 
+    opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player, [Next|Acc]).
+
+neighbour_count(Board, Width, Height, false, Periodic, Opt, Player) ->
+      neighbour_match(Board, Width, Height, Periodic, Opt, -1,  0, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt, +1,  0, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt,  0, -1, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt,  0, +1, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt, -1, -1, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt, -1, +1, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt, +1, -1, Player)
+    + neighbour_match(Board, Width, Height, Periodic, Opt, +1, +1, Player);
+neighbour_count(Board, Width, Height, true, Periodic, Opt, Player) ->
+    {ok, Idx, _} = egambo_tictac:put(true, Board, Width, Opt, Player),
+    neighbour_count(Board, Width, Height, false, Periodic, Idx, Player).
+
+neighbour_match(_Board, Width, _Height, false, Pos, _, -1, ?AVAILABLE) when Pos<Width-> 1; 
+neighbour_match(_Board, Width, _Height, false, Pos, _, -1, _Player) when Pos<Width -> 0;
+neighbour_match(_Board, Width,  Height, false, Pos, _, +1, ?AVAILABLE) when Pos+Width >= Width*Height -> 1; 
+neighbour_match(_Board, Width,  Height, false, Pos, _, +1, _Player) when Pos+Width >= Width*Height -> 0;
+neighbour_match(_Board, Width, _Height, false, Pos, -1, _, ?AVAILABLE) when Pos rem Width == 0 -> 1; 
+neighbour_match(_Board, Width, _Height, false, Pos, -1, _, _Player) when Pos rem Width == 0 -> 0;
+neighbour_match(_Board, Width, _Height, false, Pos, +1, _, ?AVAILABLE) when Pos rem Width == Width-1 -> 1; 
+neighbour_match(_Board, Width, _Height, false, Pos, +1, _, _Player) when Pos rem Width == Width-1 -> 0;
+neighbour_match(Board, Width, _Height, false, Pos, DX, DY, Player) ->
+    case lists:nth(1+Pos+DX+DY*Width, binary_to_list(Board)) of
+        Player ->   1;
+        _ ->        0
+    end;
+neighbour_match(Board, Width, Height, true, Pos, DX, DY, Player) ->
+    NewX = (Pos+DX+Width) rem Width,
+    NewY = (Pos div Height + DY + Height) div Height,
+    case lists:nth(1+NewX+NewY*Width, binary_to_list(Board)) of
+        Player ->   1;
+        _ ->        0
+    end.
+
+sig(0) -> 0;
+sig(X) when X>0 -> 1;
+sig(X) when X<0 -> -1.
 
 -spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_win} | {error, atom()}.
 play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  

@@ -15,7 +15,7 @@
 
 -define(ANN_HIDDEN_BREATH, 2.0).    % Number of neurons in hidden layer = ROUND(board size * ?ANN_HIDDEN_BREATH)
 -define(ANN_EXTRA_LAYERS, 0).       % Number of total layers = board width + ?ANN_EXTRA_LAYERS (inluding Input and Output Layers)
--define(ANN_ACTIVATION, tanh).      % tanh, relu or sigmoid
+-define(ANN_ACTIVATION, tanh1).     % tanh1, tanh, relu or sigmoid
 -define(ANN_OUTPUT_TARGET, 1.0).    % Output swing of 'most important move' (should correlate to point of max. nonlinearity of AF)
 -define(ANN_OUTPUT_MTE, 4.0).       % Optimize for sensitivity for move 4 before the end of the game (4 more half-moves to end)
 
