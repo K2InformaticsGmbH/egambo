@@ -70,6 +70,8 @@
                 , players=2  :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
                 , layers=[]  :: [integer()]     % neuron count per  layer
+                , explore=0.0 :: float()        % rate for random exploration (0..1.0)
+                , flatten=0.0 :: float()        % relative output threshold for flat sampling (random picking)
                 , rate=0.05  :: float()         % default learning rate
                 , epochs=10  :: integer()       % default learning epochs
                 , error=0.001 :: float()        % default learning error
@@ -112,9 +114,7 @@
         , norm/1
         ]).
 
--export([ play_bot_immediate_win/9
-        , play_bot_defend_immediate/9
-        , ann_norm_input/1
+-export([ ann_norm_input/1
         , ann_norm_sample_output/2
         ]).
 
@@ -374,28 +374,30 @@ handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{status=Status} = State
     {noreply, State};
 handle_cast({play_bot_req, GameId, Board, NAliases}, #state{ width=Width, height=Height, run=Run, network=Network
                                                           , gravity=Gravity, periodic=Periodic, winmod=WinMod
-                                                          , ialiases=IAliases
+                                                          , ialiases=IAliases, explore=Explore, flatten=Flatten
                                                           } = State) -> 
     Options = put_options(Board, Width, Gravity),
-    case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
+    case egambo_tictac_bot:play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
         {ok, Idx, NewBoard} ->              % win in this move detected
             play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard}),
             {noreply, State}; 
         {nok, no_immediate_win} ->
-            case play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
+            case egambo_tictac_bot:play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options) of
                 {ok, Idx, NewBoard} ->      % opponent's win in this move detected and taken
-                    play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard}),
-                    {noreply, State};
+                    play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard});
                 {nok, no_immediate_risk} ->
-                    case play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) of 
-                        {ok, Idx, NewBoard} ->
-                            play_bot_resp(GameId, Player, {ok, Idx, NewBoard}),
-                            {noreply, State}
+                    case rand:uniform() of
+                        R when R<Explore ->
+                            {ok, Idx, NewBoard} = egambo_tictac_bot:play_bot_random(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options),
+                            play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard});
+                        _ ->
+                            {ok, Idx, NewBoard} = play_bot_ann(Board, Width, Gravity, IAliases, NAliases, Network, Flatten),
+                            play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard})
                     end;
                 Error -> 
-                    play_bot_resp(GameId, hd(NAliases), Error),
-                    {noreply, State}
-            end;
+                    play_bot_resp(GameId, hd(NAliases), Error)
+            end,
+            {noreply, State};
         Error -> 
             play_bot_resp(GameId, hd(NAliases), Error),
             {noreply, State}
@@ -468,26 +470,26 @@ put_options(Board, _Width, false) ->
 put_options(Board, Width, true) ->
     lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false].
 
--spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
-play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
-play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
-    {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
-    case egambo_tictac:is_win(WinMod, TestBoard, Aliases) of
-        true ->     {ok, Idx, TestBoard};
-        false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
-    end.
+% -spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
+% play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
+% play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
+%     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
+%     case egambo_tictac:is_win(WinMod, TestBoard, Aliases) of
+%         true ->     {ok, Idx, TestBoard};
+%         false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
+%     end.
 
--spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_risk} | {error, atom()}.
-play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
-play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
-    {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-    case egambo_tictac:is_win(WinMod, TestBoard, Others) of
-        true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
-        false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
-    end.
+% -spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_risk} | {error, atom()}.
+% play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
+% play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
+%     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
+%     case egambo_tictac:is_win(WinMod, TestBoard, Others) of
+%         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
+%         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
+%     end.
 
--spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid()) -> egBotMove().
-play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network) ->
+-spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid(), float()) -> egBotMove().
+play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network, _Flatten) ->
     % ?Info("play_bot_ann Board ~p ~p",[Board, NAliases]),
     NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
     NormIn = ann_norm_input(binary_to_list(NormBoard)),

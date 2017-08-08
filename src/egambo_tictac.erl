@@ -66,7 +66,7 @@
         , print/1
         ]).
 
--export([ norm_aliases/3    % normalize board to initial alias order (simplifies bot playing)
+-export([ norm_aliases/3    %% normalize board to initial alias order (simplifies bot playing)
         , sample/5          %% sample one random move out of a finished game
         , samples/5         %% sample all moves out of a finished game
         , history/2         %% board with merged in move history

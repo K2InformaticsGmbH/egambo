@@ -41,6 +41,7 @@
 
 -export([ play_bot_immediate_win/9
         , play_bot_defend_immediate/9
+        , play_bot_random/9
         ]).
 
 game_types(egambo_tictac) -> all;
