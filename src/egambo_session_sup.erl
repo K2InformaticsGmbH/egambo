@@ -4,7 +4,7 @@
 -include("egambo.hrl").
 
 %% API
--export([start_link/0, start_session/5, close_session/1, list_sessions/0]).
+-export([start_link/0, start_session/1, close_session/1, list_sessions/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,14 +27,17 @@ start_link() ->
             Error
     end.
 
--spec start_session(binary(), binary(),
-                    integer(), integer(), function()) -> {error, term()} | {ok, pid()}.
-start_session(SessionToken, XSRFToken, MaxSessionTimeout, PingTimeout, ConnInfoFun) ->
-    supervisor:start_child(?MODULE, [SessionToken, XSRFToken, MaxSessionTimeout, 
-                                     PingTimeout, ConnInfoFun]).
+-spec start_session(binary()) -> {error, term()} | {ok, pid()}.
+start_session(SessionId) ->
+    supervisor:start_child(?MODULE, [SessionId]).
 
--spec close_session(pid()) -> ok | {error, not_found | simple_one_for_one}.
-close_session(SessionPid) ->
+-spec close_session(pid() | binary()) -> ok | {error, not_found | simple_one_for_one}.
+close_session(SessionId) when is_binary(SessionId) ->
+    case global:whereis_name(SessionId) of
+        undefined -> {error, not_found};
+        Pid -> supervisor:terminate_child(?MODULE, Pid)
+    end;
+close_session(SessionPid) when is_pid(SessionPid) ->
     supervisor:terminate_child(?MODULE, SessionPid).
 
 -spec list_sessions() -> [binary()]. %%TODO: What do we return here, tokens ?
@@ -46,5 +49,5 @@ list_sessions() ->
 %% ===================================================================
 
 init([]) ->
-	SupFlags = {simple_one_for_one, 5, 10},
+    SupFlags = {simple_one_for_one, 5, 10},
     {ok, {SupFlags, [?CHILD(egambo_session)]}}.

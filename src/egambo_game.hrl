@@ -9,7 +9,6 @@
 -type egGameMove()              :: integer() | atom().      % e.g. board index, maybe parameterized commands later
 -type egBotMove()               :: {ok, integer(), binary()} | egGameError().  % e.g. board index / move command and NewBoard
 -type egBotMoveCmd()            :: {ok, integer(), binary()} | egGameError().  % e.g. board index / move command and NewBoard
--type egAccountId()             :: ddEntityId().            % imem AccountId
 -type egAlias()                 :: integer().               % e.g. ascii of letters X and O
 -type egScore()                 :: float().                 % 1.0=win, 0.0=tie, -1.0=lose (interpolations possible)
 -type egGameMsgType()           :: create | cancel | play | close.   

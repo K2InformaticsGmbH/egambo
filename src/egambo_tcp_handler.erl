@@ -8,15 +8,23 @@
 -export([init/3, code_change/3, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2]).
 
--record(state, {ip, port, srv}).
+-record(state, {
+    ip :: inet:ip_address(),
+    port :: inet:port_number(),
+    srv :: tuple(),
+    session :: binary()
+}).
 
 %% Callbacks
 init(IP, Port, Srv) ->
     ?Info("peer connected ~s:~p", [inet:ntoa(IP), Port]),
-    {ok, #state{ip = IP, port = Port, srv = Srv}}.
+    SessionId = base64:encode(crypto:strong_rand_bytes(94)),
+    egambo_session_sup:start_session(SessionId),
+    {ok, #state{ip = IP, port = Port, srv = Srv, session = SessionId}}.
 
-handle_info(Json, State) when is_map(Json) ->
+handle_info(Json, #state{session = SessionId, srv = Srv} = State) when is_map(Json) ->
     ?Info("Json data received: ~p", [Json]),
+    egambo_session:request(SessionId, Json, build_reply_fun(Srv)),
     {noreply, State};
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p", [?MODULE, Request]),
@@ -30,15 +38,17 @@ handle_call(Request, From, State) ->
     {stop, {unsupported_call, Request, From}, unsupported, State}.
 
 terminate({shutdown, Reason}, State) -> terminate(Reason, State);
-terminate(Reason, #state{ip = IP, port = Port}) ->
-    ?Info("terminate ~s:~p : ~p", [inet:ntoa(IP), Port, Reason]).
+terminate(Reason, #state{ip = IP, port = Port, session = SessionId}) ->
+    ?Info("terminate ~s:~p : ~p", [inet:ntoa(IP), Port, Reason]),
+    egambo_session_sup:close_session(SessionId).
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %% End Callbacks
 
--spec build_reply_fun(pid()) -> fun().
-build_reply_fun(Self) ->
-    fun(Reply) ->
-        Self ! {reply, jsx:encode(Reply)}
+-spec build_reply_fun(tuple()) -> fun().
+build_reply_fun(Srv) ->
+    fun(Msg) ->
+        ?Info("Msg ~p", [Msg]),
+        Srv:send(#{resp => Msg})
     end.
