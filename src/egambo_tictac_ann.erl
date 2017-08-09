@@ -110,8 +110,12 @@
         , ann_samples/7
         , read_samples/6
         , predict/2
-        , pick_output/5
+        , pick_output/7
         , norm/1
+        , explore/1
+        , explore/2
+        , flatten/1
+        , flatten/2
         ]).
 
 -export([ ann_norm_input/1
@@ -187,6 +191,18 @@ test(GameTypeId, QosMin, QosMax) ->
 predict(GameTypeId, NormBoard) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), {predict, NormBoard}).
 
+explore(GameTypeId) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {explore}).
+
+explore(GameTypeId, Fraction) when is_number(Fraction)->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {explore, Fraction}).
+
+flatten(GameTypeId) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {flatten}).
+
+flatten(GameTypeId, Fraction)  when is_number(Fraction) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {flatten, Fraction}).
+
 -spec stop(egBotId()) -> ok | egGameError().
 stop(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), finish), 
@@ -240,8 +256,16 @@ ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
 %% and aggregate into the training table using an input hash
 ann_sample_single(GameTypeId, Input, Move, Score, MTE) ->
     Gain = ann_sample_gain(length(Input), Score, MTE),
-    F = fun(I) -> if I==Move -> Gain; true -> 0 end end, 
-    Output = lists:map(F, lists:seq(0, length(Input)-1)),
+    Move1 = Move + 1,           % one based index of move
+    F = fun(I) -> 
+        Inp=lists:nth(I, Input), 
+        if 
+            I==Move1 -> Gain;   % move taken in sample
+            Inp==32 ->   0;     % alternative legal move
+            true ->     -1      % illegal move (occupied)
+        end 
+    end, 
+    Output = lists:map(F, lists:seq(1, length(Input))),
     Hash = erlang:phash2(Input, 4294967296),
     Key = {GameTypeId, Hash},
     case imem_meta:read(?ANN_TRAIN, Key) of
@@ -391,7 +415,7 @@ handle_cast({play_bot_req, GameId, Board, NAliases}, #state{ width=Width, height
                             {ok, Idx, NewBoard} = egambo_tictac_bot:play_bot_random(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options),
                             play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard});
                         _ ->
-                            {ok, Idx, NewBoard} = play_bot_ann(Board, Width, Gravity, IAliases, NAliases, Network, Flatten),
+                            {ok, Idx, NewBoard} = play_bot_ann(Board, Width, Gravity, IAliases, NAliases, Network, Flatten, Options),
                             play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard})
                     end;
                 Error -> 
@@ -429,6 +453,14 @@ handle_call({predict, NormBoard}, _From, #state{network=Network, status=playing}
     {reply, Out, State};
 handle_call({predict, _}, _From, State) ->
     {reply, ?ANN_NOT_PLAYING, State};
+handle_call({explore}, _From, State) ->
+    {reply, State#state.explore, State};
+handle_call({explore, Fraction}, _From, State) ->
+    {reply, ok, State#state{explore=Fraction}};
+handle_call({flatten}, _From, State) ->
+    {reply, State#state.flatten, State};
+handle_call({flatten, Fraction}, _From, State) ->
+    {reply, ok, State#state{flatten=Fraction}};
 handle_call(start_playing, _From, State) ->
     {reply, ok, State#state{status=playing}};
 handle_call({train, Epochs, ResErr, Rate, TrainingSet}, _From, #state{network=Network, status=learning} = State) ->
@@ -488,28 +520,54 @@ put_options(Board, Width, true) ->
 %         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
 %     end.
 
--spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid(), float()) -> egBotMove().
-play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network, _Flatten) ->
+-spec play_bot_ann(binary(), integer(), boolean(), [egAlias()], [egAlias()], pid(), number(), list()) -> egBotMove().
+play_bot_ann(Board, Width, Gravity, IAliases, [Player|_]=NAliases, Network, Flatten, Options) ->
     % ?Info("play_bot_ann Board ~p ~p",[Board, NAliases]),
     NormBoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases), 
     NormIn = ann_norm_input(binary_to_list(NormBoard)),
     % ?Info("Network Input ~p ~p ",[Network, NormIn]),
     Output = ann:predict(Network, NormIn),
     % ?Info("Network Output ~p ~p ",[Network, Output]),    
-    {ok, Idx, NewBoard} = pick_output(Output, Board, Width, Gravity, Player),
+    {ok, Idx, NewBoard} = pick_output(Output, Board, Width, Gravity, Player, Flatten, Options),
     % ?Info("play_bot_ann ~p NewBoard ~p",[Idx, binary_to_list(NewBoard)]),    
     {ok, Idx, NewBoard}.
 
 
--spec pick_output(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
-pick_output(Output, Board, Width, Gravity, Player) ->
-    SortedOutput = lists:sort([{Gain,I} || {Gain,I} <- lists:zip(Output, lists:seq(0, length(Output)-1))]),   
-    pick_output_sorted(lists:reverse(SortedOutput), Board, Width, Gravity, Player).
-%    pick_output_sorted(SortedOutput, Board, Width, Gravity, Player).
+-spec pick_output(list(), binary(), integer(), boolean(), egAlias(), number(), list()) -> egBotMove().
+pick_output(Output, Board, Width, false, Player, 0, Options) ->
+    Valid = fun({_Gain, I}) -> lists:member(I, Options) end,
+    {_MaxGain, ImaxGain} = hd(lists:reverse(lists:sort(lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1)))))),
+    egambo_tictac:put(false, Board, Width, ImaxGain, Player);       % {ok, Idx, NewBoard}
+pick_output(Output, Board, Width, true, Player, 0, Options) ->
+    Valid = fun({_Gain, I}) -> lists:member(I rem Width, Options) end,
+    {_MaxGain, ImaxGain} = hd(lists:reverse(lists:sort(lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1)))))),
+    egambo_tictac:put(true, Board, Width, ImaxGain, Player);        % {ok, Idx, NewBoard}
+pick_output(Output, Board, Width, false, Player, Flatten, Options) ->
+    Valid = fun({_Gain, I}) -> lists:member(I, Options) end,
+    WeightedOutput = lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1))),
+    {{MinGain,_}, {MaxGain,_}} = min_max(WeightedOutput),
+    Threshold = MinGain + (1-Flatten)*(MaxGain-MinGain) - 1.0e-7,   % compensate for rounding errors
+    Filter = fun({G, _I}) ->  (G>Threshold) end,
+    FilteredOutput = lists:filter(Filter, WeightedOutput),
+    {_, Irnd} = lists:nth(egambo_tictac:random_idx1(length(FilteredOutput)), FilteredOutput),
+    egambo_tictac:put(false, Board, Width, Irnd, Player);        % {ok, Idx, NewBoard}
+pick_output(Output, Board, Width, true, Player, Flatten, Options) ->
+    Valid = fun({_Gain, I}) -> lists:member(I rem Width, Options) end,
+    WeightedOutput = lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1))),
+    {{MinGain,_}, {MaxGain,_}} = min_max(WeightedOutput),
+    Threshold = MinGain + (1-Flatten)*(MaxGain-MinGain) - 1.0e-7,   % compensate for rounding errors
+    Filter = fun({G,_}) ->  (G>Threshold) end,
+    FilteredOutput = lists:filter(Filter, WeightedOutput),
+    {_, Irnd} = lists:nth(egambo_tictac:random_idx1(length(FilteredOutput)), FilteredOutput),
+    egambo_tictac:put(true, Board, Width, Irnd, Player).        % {ok, Idx, NewBoard}
 
--spec pick_output_sorted(list(), binary(), integer(), boolean(), egAlias()) -> egBotMove().
-pick_output_sorted([{_,I}|Outputs], Board, Width, Gravity, Player) ->
-    case egambo_tictac:put(Gravity, Board, Width, I, Player) of
-        {ok, Idx, NewBoard} ->  {ok, Idx, NewBoard};
-        _ ->                    pick_output_sorted(Outputs, Board, Width, Gravity, Player)
-    end.
+min_max(L) -> 
+    MinMax = fun(E, {Min,Max}) ->
+        case {(E<Min),(E>Max)} of
+            {true, true} -> {E,E};
+            {false,true} -> {Min,E};
+            {true,false} -> {E,Max};
+            {false,false} -> {Min,Max}
+        end
+    end,
+    lists:foldl(MinMax, {[nil|<<255>>],-1.0e100}, L). 

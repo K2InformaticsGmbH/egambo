@@ -70,6 +70,8 @@
         , sample/5          %% sample one random move out of a finished game
         , samples/5         %% sample all moves out of a finished game
         , history/2         %% board with merged in move history
+        , random_idx0/1     %% zero based integer random number
+        , random_idx1/1     %% one based integer random number
         ]).
 
 -safe([sample, samples, history]).
