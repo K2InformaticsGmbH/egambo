@@ -156,15 +156,13 @@ stop(GameTypeId) ->
 state(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), state). 
 
-random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
-
 -spec play_bot_random(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {error, atom()}.
 play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Player|_], Options) when length(Options)==size(Board) ->
-    egambo_tictac:put(Gravity, Board, Width, lists:nth(random_idx1(length(Options)), Options), Player);
+    egambo_tictac:put(Gravity, Board, Width, lists:nth(rand:uniform(length(Options)), Options), Player);
 play_bot_random(Board, Width, Height, _Run, Gravity, Periodic, _WinMod, [Player|Others], Options) ->
-    Idx = case random_idx1(3) of
+    Idx = case rand:uniform(3) of
         1 -> % truly random
-            lists:nth(random_idx1(length(Options)), Options);
+            lists:nth(rand:uniform(length(Options)), Options);
         2 -> % maximum connectivity = minimum availability connectivity
             ObNC = opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, hd(Others)),
             % ?Info("ObNC others ~p",[ObNC]),
