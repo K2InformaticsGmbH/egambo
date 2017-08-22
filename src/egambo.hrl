@@ -6,4 +6,6 @@
 
 -type egAccountId() :: ddEntityId().    % imem AccountId
 
+-define(PLAYER_GID(__PlayerId), {global, {player, __PlayerId}}).
+
 -endif.

@@ -1,10 +1,10 @@
--module(egambo_session_sup).
+-module(egambo_player_sup).
 -behaviour(supervisor).
 
 -include("egambo.hrl").
 
 %% API
--export([start_link/0, start_session/2, close_session/1, list_sessions/0]).
+-export([start_link/0, start_player/1, close_player/1, list_players/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,21 +27,22 @@ start_link() ->
             Error
     end.
 
--spec start_session(binary(), fun()) -> {error, term()} | {ok, pid()}.
-start_session(SessionId, MsgFun) ->
-    supervisor:start_child(?MODULE, [SessionId, MsgFun]).
+-spec start_player(egAccountId()) -> {error, term()} | {ok, pid()}.
+start_player(PlayerId) ->
+    supervisor:start_child(?MODULE, [PlayerId]).
 
--spec close_session(pid() | binary()) -> ok | {error, not_found | simple_one_for_one}.
-close_session(SessionId) when is_binary(SessionId) ->
-    case global:whereis_name(SessionId) of
+-spec close_player(egAccountId()) -> ok | {error, not_found | simple_one_for_one}.
+close_player(PlayerPid) when is_pid(PlayerPid) ->
+    supervisor:terminate_child(?MODULE, PlayerPid);
+close_player(PlayerId) ->
+    {global, Name} = ?PLAYER_GID(PlayerId),
+    case global:whereis_name(Name) of
         undefined -> {error, not_found};
         Pid -> supervisor:terminate_child(?MODULE, Pid)
-    end;
-close_session(SessionPid) when is_pid(SessionPid) ->
-    supervisor:terminate_child(?MODULE, SessionPid).
+    end.
 
--spec list_sessions() -> [pid()].
-list_sessions() ->
+-spec list_players() -> [pid()].
+list_players() ->
     [Pid || {undefined, Pid, worker, _} <- supervisor:which_children(?MODULE)].
 
 %% ===================================================================
@@ -50,4 +51,4 @@ list_sessions() ->
 
 init([]) ->
     SupFlags = {simple_one_for_one, 5, 10},
-    {ok, {SupFlags, [?CHILD(egambo_session)]}}.
+    {ok, {SupFlags, [?CHILD(egambo_player)]}}.

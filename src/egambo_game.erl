@@ -205,7 +205,7 @@
         , start/3           % want to challenge a specific player (accept a matching offering or create one)
         , cancel/2          % cancel a game in forming state, only possible before playing really starts
         , accept/2          % accept a specific challenge from someone
-        , notify/5          % notify players and watchers about a game state change
+        , notify/6          % notify players and watchers about a game state change
         , result/1          % return map with current game result (board status, turn, scores)
         , moves/1           % return map with game history
         , read_game/1       % return game status from egGame table
@@ -266,15 +266,25 @@ accept(GameId, MyAcc) when is_integer(MyAcc) ->
     gen_server:call(?MODULE, {accept, GameId, MyAcc});
 accept(_, _) -> ?BAD_ACCOUNT.
 
--spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBotId()]) -> ok | egGameError().
-notify(EventTime, GameId, MessageType, Message, Bots) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) ->
+-spec notify(egTime(), egGameId(), egGameMsgType(), egGameMsg(), [egBotId()], [egAccountId()]) -> ok | egGameError().
+notify(EventTime, GameId, MessageType, Message, Bots, Players) when is_tuple(EventTime), is_integer(GameId), is_atom(MessageType) ->
     case lists:member(undefined, Bots) of
         true ->
-            % ToDo: publish a message to be received by subscribed players and watchers
+            send_notification(Bots, Players, Message#{type => MessageType}),
+            %% TODO: Check real type here as type of time doesn't match,
+            %%       egTime == ddTimeUID =/= ddTimestamp
             imem_meta:write(egGameMsg, #egGameMsg{time=EventTime, gid=GameId, msgtype=MessageType, message=Message});
         false ->
             ok  % no notifications/logs needed for games bot against bot
     end.
+
+-spec send_notification([egBotId()], [egAccountId()], map()) -> ok.
+send_notification(_, [], _Msg) -> ok;
+send_notification([undefined | Bots], [PlayerId | Players], Msg) ->
+    egambo_player:notify(PlayerId, Msg),
+    send_notification(Bots, Players, Msg);
+send_notification([_ | Bots], [_BotId | Players], Msg) ->
+    send_notification(Bots, Players, Msg).
 
 -spec resume_bots(egGameTypeId(), [egBotId()]) -> ok | egGameError().
 resume_bots(_GameTypeId, []) -> ok;
@@ -357,14 +367,14 @@ read_bot(AccountId) ->
     end.
 
 -spec start_game(#egGame{}) -> ok | egGameError().
-start_game(#egGame{gid=GameId, tid=GameType, bots=Bots, stime=STime} = Game) ->
+start_game(#egGame{gid=GameId, tid=GameType, bots=Bots, stime=STime, players=Players} = Game) ->
     write_game(Game),
     case read_type(GameType) of
         #egGameType{engine=Engine} ->
           case Engine:resume(GameId) of
-              ok ->   notify(STime, GameId, start_success, Engine:result(Game), Bots),
+              ok ->   notify(STime, GameId, start_success, Engine:result(Game), Bots, Players),
                       ok;
-              Err ->  notify(STime, GameId, start_failure, Engine:result(Game), Bots),
+              Err ->  notify(STime, GameId, start_failure, Engine:result(Game), Bots, Players),
                       Err
           end;
         Error ->

@@ -4,7 +4,7 @@
 -include("egambo.hrl").
 
 -export([
-    start_link/1,
+    start_link/2,
     request/3
 ]).
 
@@ -21,12 +21,13 @@
 -record(state, {
     playerId :: egAccountId(),
     skey :: integer(),
-    sessionId :: binary()
+    sessionId :: binary(),
+    notifyFun :: fun()
 }).
 
--spec start_link(binary()) -> {ok, pid()} | {error, term()}.
-start_link(SessionId) ->
-    gen_server:start_link({global, SessionId}, ?MODULE, [SessionId], []).
+-spec start_link(binary(), fun()) -> {ok, pid()} | {error, term()}.
+start_link(SessionId, NotifyFun) ->
+    gen_server:start_link({global, SessionId}, ?MODULE, [SessionId, NotifyFun], []).
 
 -spec request(binary(), map(), fun()) -> ok | {error, binary()}.
 request(SessionId, #{<<"action">> := Action} = ReqArgs, ReplyFun) ->
@@ -37,13 +38,13 @@ request(SessionId, #{<<"action">> := Action} = ReqArgs, ReplyFun) ->
 request(_SessionId, _ReqArgs, ReplyFun) when is_function(ReplyFun) ->
     ReplyFun(<<"Invalid request">>).
 
-init([SessionId]) ->
-    {ok, #state{sessionId = SessionId}}.
+init([SessionId, NotifyFun]) ->
+    {ok, #state{sessionId = SessionId, notifyFun = NotifyFun}}.
 
 handle_call(_Req, _From, State) ->
     {reply, {error, <<"invalid request">>}, State}.
 
-handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefined, sessionId = SessionId} = State) ->
+handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefined, sessionId = SessionId, notifyFun = NotifyFun} = State) ->
     case authenticate(User, Password, SessionId) of
         {error, invalid} ->
             ReplyFun(<<"Invalid account credentials">>),
@@ -56,8 +57,15 @@ handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefin
             {noreply, State};
         SKey ->
             {ok, PlayerId} = get_userid(SKey, User),
-            ReplyFun(<<"ok">>),
-            {noreply, State#state{playerId = PlayerId, skey = SKey}}
+            case egambo_player:register(PlayerId, NotifyFun) of
+                ok ->
+                    ReplyFun(<<"ok">>),
+                    {noreply, State#state{playerId = PlayerId, skey = SKey}};
+                {error, Reason} ->
+                    %% TODO: Review seco as probably this will leak :)
+                    ReplyFun(Reason),
+                    {noreply, State}
+            end
     end;
 handle_cast({<<"change_credentials">>, {User, Password, NewPassword}, ReplyFun}, #state{sessionId = SessionId} = State) ->
     % TODO: Do we really need a configurable policy, also we might want
@@ -127,11 +135,12 @@ handle_cast({<<"play">>, {GameId, Pos}, ReplyFun}, #state{playerId = PlayerId} =
 handle_cast({_, _, ReplyFun}, State) when is_function(ReplyFun) ->
     ReplyFun(<<"Invalid request">>),
     {noreply, State};
-handle_cast(Request, State) ->
-    ?Info("Unsolicited handle_cast in ~p : ~p", [?MODULE, Request]),
+handle_cast(Request, #state{sessionId = SessionId, playerId = PlayerId} = State) ->
+    ?Error("Unsolicited cast ~p session ~p for player ~p", [Request, SessionId, PlayerId]),
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info(Info, #state{sessionId = SessionId, playerId = PlayerId} = State) ->
+    ?Error("Unsolicited message ~p session ~p for player ~p", [Info, SessionId, PlayerId]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

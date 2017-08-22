@@ -384,9 +384,9 @@ handle_info({play_bot_resp, Player, {ok, Cell, NewBoard}}, #state{naliases=[Play
         {stop, normal, NewState} -> {stop, normal, NewState};
         {reply, ok, NewState} ->    {noreply, NewState}
     end;
-handle_info({play_bot_resp, Player, Error}, #state{gid=GameId, bots=Bots, naliases=[Player|_]} = State) ->
+handle_info({play_bot_resp, Player, Error}, #state{gid=GameId, bots=Bots, naliases=[Player|_], players=Players} = State) ->
     NewTime = egambo_game:eg_time(),
-    egambo_game:notify(NewTime, GameId, error, {play_bot_resp, Player, Error}, Bots),
+    egambo_game:notify(NewTime, GameId, error, {play_bot_resp, Player, Error}, Bots, Players),
     {noreply, State};
 handle_info({save_state, SavedEndTime}, #state{etime=EndTime} = State) ->
     case EndTime of
@@ -437,7 +437,7 @@ handle_call(moves, _From, #state{gid=GameId, etime=EndTime, status=Status, space
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Movers, bots=Bots, winmod=WinMod} = State) ->
+handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Movers, bots=Bots, winmod=WinMod, players=Players} = State) ->
     NewAliases = rotate(Aliases),
     NewMovers = rotate(Movers),
     NewMoves = [{hd(Aliases), Idx}|State#state.moves],
@@ -453,7 +453,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                   , moves=NewMoves
                                   },
             save_state(NewState), 
-            egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+            egambo_game:notify(NewTime, GameId, close, result(NewState), Bots, Players),
             case length((Bots -- [undefined]) -- [undefined]) of
                 2 -> ok;
                 _ -> 
@@ -473,7 +473,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                           , moves=NewMoves
                                           },
                     save_state(NewState), 
-                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots),
+                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots, Players),
                     case length((Bots -- [undefined]) -- [undefined]) of
                         2 -> ok;
                         _ -> 
@@ -489,7 +489,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                           , nscores=rotate(State#state.nscores)
                                           , moves=NewMoves
                                           },
-                    egambo_game:notify(NewTime, GameId, status, result(NewState), Bots),
+                    egambo_game:notify(NewTime, GameId, status, result(NewState), Bots, Players),
                     case length((Bots -- [undefined]) -- [undefined]) of
                         2 -> ok;
                         _ -> 

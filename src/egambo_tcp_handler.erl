@@ -19,12 +19,13 @@
 init(IP, Port, Srv) ->
     ?Info("peer connected ~s:~p", [inet:ntoa(IP), Port]),
     SessionId = base64:encode(crypto:strong_rand_bytes(94)),
-    egambo_session_sup:start_session(SessionId),
+    MsgFun = build_reply_fun(msg, Srv),
+    egambo_session_sup:start_session(SessionId, MsgFun),
     {ok, #state{ip = IP, port = Port, srv = Srv, session = SessionId}}.
 
 handle_info(Json, #state{session = SessionId, srv = Srv} = State) when is_map(Json) ->
     ?Info("Json data received: ~p", [Json]),
-    egambo_session:request(SessionId, Json, build_reply_fun(Srv)),
+    egambo_session:request(SessionId, Json, build_reply_fun(resp, Srv)),
     {noreply, State};
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p", [?MODULE, Request]),
@@ -46,9 +47,9 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %% End Callbacks
 
--spec build_reply_fun(tuple()) -> fun().
-build_reply_fun(Srv) ->
+-spec build_reply_fun(atom(), tuple()) -> fun().
+build_reply_fun(Dir, Srv) ->
     fun(Msg) ->
-        ?Info("Msg ~p", [Msg]),
-        Srv:send(#{resp => Msg})
+        ?Info("~p ~p", [Dir, Msg]),
+        Srv:send(#{Dir => Msg})
     end.

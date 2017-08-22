@@ -28,6 +28,7 @@ init([]) ->
     {ok
     , { {one_for_one, 5, 10}
       , [ ?CHILD(egambo_game, worker)
+        , ?CHILD(egambo_player_sup, supervisor)
         , ?CHILD(egambo_session_sup, supervisor)
         , ?CHILD(egambo_tictac_sup, supervisor)
         , ?CHILD(egambo_bot_sup, supervisor)
