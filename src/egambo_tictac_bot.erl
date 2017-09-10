@@ -87,7 +87,7 @@ handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{status=Status} = State
 handle_cast({play_bot_req, GameId, Board, Aliases}, #state{ width=Width, height=Height, run=Run
                                                           , gravity=Gravity, periodic=Periodic, winmod=WinMod
                                                           } = State) -> 
-    Options = put_options(Board, Width, Height, Gravity),
+    Options = egambo_tictac:put_options(Board, Width, Height, Gravity),
     case play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Options) of
         {ok, Idx, NewBoard} ->              % win in this move detected
             play_bot_resp(GameId, hd(Aliases), {ok, Idx, NewBoard}); 
@@ -237,8 +237,3 @@ play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, 
         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
     end.
-
-put_options(Board, Width, Height, false) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,Width*Height-1))]) -- [false];
-put_options(Board, Width, _Height, true) ->
-    lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false].

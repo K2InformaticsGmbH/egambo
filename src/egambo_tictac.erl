@@ -72,6 +72,8 @@
         , history/2         %% board with merged in move history
         , random_idx0/1     %% zero based integer random number
         , random_idx1/1     %% one based integer random number
+        , put_options/4
+        , shuffle/1
         ]).
 
 -safe([sample, samples, history]).
@@ -342,6 +344,13 @@ samples(Space, IAliases, Moves, FAliases, FScores) ->
 norm_aliases(Board, Aliases, Aliases) -> Board;
 norm_aliases(Board, FromAliases, ToAliases) -> 
     list_to_binary([flip(P, FromAliases, ToAliases) || P <- binary_to_list(Board)]).
+
+put_options(Board, Width, Height, false) ->
+    shuffle(lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,Width*Height-1))]) -- [false]);
+put_options(Board, Width, _Height, true) ->
+    shuffle(lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(binary:part(Board,0,Width)), lists:seq(0,Width-1))]) -- [false]).
+
+shuffle(L) -> [ X || {_,X} <- lists:sort([{rand:uniform(), N} || N <- L])].
 
 flip(P, [], []) -> P;
 flip(P, [P|_], [I|_]) -> I;
