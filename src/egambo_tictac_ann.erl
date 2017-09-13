@@ -254,15 +254,17 @@ ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
 
 %% Format a single sample for ann use (Board size input vector, Board size output vector)
 %% and aggregate into the training table using an input hash
-ann_sample_single(GameTypeId, Input, Move, Score, MTE) ->
+ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
+    #egGameType{params=#{width:=Width, height:=Height, gravity:=Gravity, periodic:=Periodic}} = egambo_game:read_type(GameTypeId),
+    {Input, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, Board),
     Gain = ann_sample_gain(length(Input), Score, MTE),
     Move1 = Move + 1,           % one based index of move
     F = fun(I) -> 
         Inp=lists:nth(I, Input), 
         if 
-            I==Move1 -> Gain;   % move taken in sample
-            Inp==32 ->   0;     % alternative legal move
-            true ->     -1      % illegal move (occupied)
+            I==Move1 -> {1, Gain};   % move taken in sample
+            Inp==32 ->  {0, 0};      % alternative legal move, not taken here
+            true ->     0            % illegal move (occupied)
         end 
     end, 
     Output = lists:map(F, lists:seq(1, length(Input))),
@@ -304,7 +306,11 @@ ann_sample_gain(BoardSize, Score, MTE) ->
     ?ANN_OUTPUT_TARGET * Score * (BoardSize-MTE+1) / (BoardSize-?ANN_OUTPUT_MTE).
 
 vector_add(OldOut, Output) ->
-    [Old + Out || {Old, Out} <- lists:zip(OldOut, Output)].
+    [accu_add(Old, Out) || {Old, Out} <- lists:zip(OldOut, Output)].
+
+accu_add(0, 0) -> 0;
+accu_add({AccN,AccS}, {N,S}) -> {AccN+N, AccS+S}. 
+
 
 ann_norm_input(L) -> [ann_norm_single_input(I) || I <- L].
 
@@ -316,13 +322,17 @@ ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-    Fac = case norm(AggregatedOutputVector) of
-        0.0 ->      0.0;
-        0 ->        0.0;
-        Norm ->     1.0 / Norm
-    end,
-    Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
+    Fun = fun(0) -> 0; ({N,S}) -> S/N end, 
     lists:map(Fun, AggregatedOutputVector). 
+
+% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
+%     Fac = case norm(AggregatedOutputVector) of
+%         0.0 ->      0.0;
+%         0 ->        0.0;
+%         Norm ->     1.0 / Norm
+%     end,
+%     Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
+%     lists:map(Fun, AggregatedOutputVector). 
 
 % ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
 %   Fac = 1.0 / norm(AggregatedOutputVector),
@@ -528,7 +538,7 @@ play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, [Player|_]=NAlia
     Output = ann:predict(Network, NormIn),
     ?Info("play_bot_ann network Output ~p",[Output]),    
     NormIdx = pick_output(Output, NormBoard, Flatten),      % 0-based index for predicted move
-    NewIdx = egambo_tictac_sym:denorm_move(Width, Height, Sym, NormIdx),    
+    NewIdx = egambo_tictac_sym:denorm_move(Width, Height, NormIdx, Sym),    
     ?Info("play_bot_ann NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
     {ok, Idx, NewBoard} = egambo_tictac:put(Gravity, Board, Width, NewIdx, Player),
     ?Info("play_bot_ann Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
