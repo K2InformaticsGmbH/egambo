@@ -126,23 +126,23 @@ gen(W, H) ->
         , list_to_binary([gen_render_ty(W, H, S) || S <- ty_symmetries(H)])
         ])).
 
-transx(Board, W, _H, TX) when TX==0;TX==W -> Board;  
-transx(Board, _W, _H, _TX) -> Board.     %ToDo: implement X shifting 
+transx(W, _H, TX, Board) when TX==0;TX==W -> Board;  
+transx(W, H, TX, Board) -> apply(?SYM_MODULE(W, H), tx_sym(TX), [Board]). 
 
-transy(Board, _W, H, TY) when TY==0;TY==H -> Board;
-transy(Board, _W, _H, _TY) -> Board.     %ToDo: implement Y shifting
+transy(_W, H, TY, Board) when TY==0;TY==H -> Board;
+transy(W, H, TY, Board) -> apply(?SYM_MODULE(W, H), ty_sym(TY), [Board]).
 
 map(W, H, Board, Sym) when is_atom(Sym) -> 
     apply(?SYM_MODULE(W, H), Sym, [Board]);
 map(W, H, Board, {S,TX,TY}) when is_atom(S) -> 
-    apply(?SYM_MODULE(W, H), S, [transy(W, H, transx(Board, W, H, TX), TY)]). 
+    apply(?SYM_MODULE(W, H), S, [transy(W, H, TY, transx(W, H, TX, Board))]). 
 
 unmap(_, _, NBoard, ide) -> NBoard;
 unmap(W, H, NBoard, S) when S==hor;S==ver;S==pnt;S==bck;S==fwd -> map(W, H, NBoard, S);
 unmap(W, H, NBoard, {S,0,0}) -> unmap(W, H, NBoard, S);
 unmap(W, H, NBoard, lft) -> map(W, H, NBoard, rgt);
 unmap(W, H, NBoard, rgt) -> map(W, H, NBoard, lft);
-unmap(W, H, NBoard, {S,TX,TY}) -> transx(transy(unmap(W, H, NBoard, S), W, H, H-TY), W, H, W-TX).
+unmap(W, H, NBoard, {S,TX,TY}) -> transx(W, H, W-TX, transy(W, H, H-TY, unmap(W, H, NBoard, S))).
 
 t_off(Dim) -> lists:seq(0,Dim-1).
 
@@ -221,6 +221,10 @@ map_33_test_() ->
     , {"fwd", ?_assertEqual("ifchebgda", map(W, H, Board, fwd))}
     , {"lft", ?_assertEqual("gdahebifc", map(W, H, Board, rgt))}
     , {"rgt", ?_assertEqual("cfibehadg", map(W, H, Board, lft))}
+    , {"idex1", ?_assertEqual("bcaefdhig", map(W, H, Board, {ide,1,0}))}
+    , {"idex2", ?_assertEqual("cabfdeigh", map(W, H, Board, {ide,2,0}))}
+    , {"idey1", ?_assertEqual("defghiabc", map(W, H, Board, {ide,0,1}))}
+    , {"idey2", ?_assertEqual("ghiabcdef", map(W, H, Board, {ide,0,2}))}
     ].
 
 sym_44_test_() ->
@@ -274,10 +278,15 @@ norm_tup(W, H, G, P) -> norm_test(W, H, G, P, egambo_tictac:shuffle(lists:seq($A
 
 norm_44_test_() -> [norm_tup(4,4,false,false) || _ <- lists:seq(0,19)].
 
+norm_44p_test_() -> [norm_tup(4,4,false,true) || _ <- lists:seq(0,19)].
+
 norm_54_test_() -> [norm_tup(5,4,false,false) || _ <- lists:seq(0,5)].
+
+norm_54p_test_() -> [norm_tup(5,4,false,true) || _ <- lists:seq(0,5)].
 
 norm_76g_test_() -> [norm_tup(7,6,true,false) || _ <- lists:seq(0,5)].
 
+norm_76gp_test_() -> [norm_tup(7,6,true,true) || _ <- lists:seq(0,5)].
 
 map_move_test(W, H, G, P, Board) -> 
     % can we get back the original board by looking up elements in the normalized board?
@@ -286,12 +295,17 @@ map_move_test(W, H, G, P, Board) ->
 
 map_move_tup(W, H, G, P) -> map_move_test(W, H, G, P, egambo_tictac:shuffle(lists:seq($A,$A+W*H-1))).
 
-map_move_44_test_() -> [map_move_tup(4, 4, false, false) || _ <- lists:seq(0,19)].
+map_move_44_test_() -> [map_move_tup(4, 4, false, false) || _ <- lists:seq(0,9)].
+
+map_move_44p_test_() -> [map_move_tup(4, 4, false, true) || _ <- lists:seq(0,9)].
 
 map_move_54_test_() -> [map_move_tup(5, 4, false, false) || _ <- lists:seq(0,5)].
 
+map_move_54p_test_() -> [map_move_tup(5, 4, false, true) || _ <- lists:seq(0,5)].
+
 map_move_76g_test_() -> [map_move_tup(7, 6, true, false) || _ <- lists:seq(0,5)].
 
+map_move_76gp_test_() -> [map_move_tup(7, 6, true, true) || _ <- lists:seq(0,5)].
 
 unmap_move_test(W, H, G, P, Board) -> 
     % can we get the normalized board by looking up elements in the original board?
