@@ -2,29 +2,54 @@
 
 -export([ide/1, ver/1, hor/1, pnt/1, bck/1, fwd/1, lft/1, rgt/1]).
 
+-export([x01/1, x02/1]).
+
+-export([y01/1, y02/1]).
+
 % generated in egambo_tictac_sym
 
 ide(Board) -> Board.
 
-ver(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<AC:8, AB:8, AA:8, BC:8, BB:8, BA:8, CC:8, CB:8, CA:8>>.
+ver([AA, AB, AC]) -> 
+    [AC, AB, AA];
 
-hor(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<CA:8, CB:8, CC:8, BA:8, BB:8, BC:8, AA:8, AB:8, AC:8>>.
+ver([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [AC, AB, AA, BC, BB, BA, CC, CB, CA].
 
-pnt(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<CC:8, CB:8, CA:8, BC:8, BB:8, BA:8, AC:8, AB:8, AA:8>>.
+hor([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [CA, CB, CC, BA, BB, BC, AA, AB, AC].
 
-bck(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<AA:8, BA:8, CA:8, AB:8, BB:8, CB:8, AC:8, BC:8, CC:8>>.
+pnt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [CC, CB, CA, BC, BB, BA, AC, AB, AA].
 
-fwd(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<CC:8, BC:8, AC:8, CB:8, BB:8, AB:8, CA:8, BA:8, AA:8>>.
+bck([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [AA, BA, CA, AB, BB, CB, AC, BC, CC].
 
-lft(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<AC:8, BC:8, CC:8, AB:8, BB:8, CB:8, AA:8, BA:8, CA:8>>.
+fwd([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [CC, BC, AC, CB, BB, AB, CA, BA, AA].
 
-rgt(<<AA:8, AB:8, AC:8, BA:8, BB:8, BC:8, CA:8, CB:8, CC:8>>) -> 
-    <<CA:8, BA:8, AA:8, CB:8, BB:8, AB:8, CC:8, BC:8, AC:8>>.
+lft([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [AC, BC, CC, AB, BB, CB, AA, BA, CA].
+
+rgt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [CA, BA, AA, CB, BB, AB, CC, BC, AC].
+
+
+x01([AA, AB, AC]) -> 
+    [AB, AC, AA];
+x01([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [AB, AC, AA, BB, BC, BA, CB, CC, CA].
+
+x02([AA, AB, AC]) -> 
+    [AC, AA, AB];
+x02([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [AC, AA, AB, BC, BA, BB, CC, CA, CB].
+
+
+y01([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [BA, BB, BC, CA, CB, CC, AA, AB, AC].
+
+y02([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+    [CA, CB, CC, AA, AB, AC, BA, BB, BC].
 
 

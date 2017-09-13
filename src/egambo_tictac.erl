@@ -569,9 +569,9 @@ put_random(true, Board, Width, Count, NewVal) ->
         {ok, _, Binary} ->           put_random(true, Binary, Width, Count-1, NewVal)
     end.
 
-random_idx0(Width) -> crypto:rand_uniform(0, Width). % 0..Width-1 / 0 based random integer
+random_idx0(Size) -> rand:uniform(Size)-1.      % 0..Size-1 / 0 based random integer pointing into a binary
 
-random_idx1(Length) -> crypto:rand_uniform(1, Length+1). % 1..Length / 1 based random integer
+random_idx1(Length) -> rand:uniform(Length).    % 1..Length / 1 based random integer pointing into a list
 
 print_next(Next) -> ?Info("next move ~s",[[Next]]).
 

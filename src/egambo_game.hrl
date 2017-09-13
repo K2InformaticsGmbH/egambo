@@ -1,7 +1,7 @@
 -ifndef(_EGAMBO_GAME_HRL_).
 -define(_EGAMBO_GAME_HRL_, true).
 
--include_lib("egambo.hrl").
+-include("egambo.hrl").
 
 -type egGameTypeId()            :: binary().                
 -type egGameCategoryId()        :: binary().                

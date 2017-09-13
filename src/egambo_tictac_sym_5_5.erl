@@ -2,29 +2,70 @@
 
 -export([ide/1, ver/1, hor/1, pnt/1, bck/1, fwd/1, lft/1, rgt/1]).
 
+-export([x01/1, x02/1, x03/1, x04/1]).
+
+-export([y01/1, y02/1, y03/1, y04/1]).
+
 % generated in egambo_tictac_sym
 
 ide(Board) -> Board.
 
-ver(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<AE:8, AD:8, AC:8, AB:8, AA:8, BE:8, BD:8, BC:8, BB:8, BA:8, CE:8, CD:8, CC:8, CB:8, CA:8, DE:8, DD:8, DC:8, DB:8, DA:8, EE:8, ED:8, EC:8, EB:8, EA:8>>.
+ver([AA, AB, AC, AD, AE]) -> 
+    [AE, AD, AC, AB, AA];
 
-hor(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<EA:8, EB:8, EC:8, ED:8, EE:8, DA:8, DB:8, DC:8, DD:8, DE:8, CA:8, CB:8, CC:8, CD:8, CE:8, BA:8, BB:8, BC:8, BD:8, BE:8, AA:8, AB:8, AC:8, AD:8, AE:8>>.
+ver([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AE, AD, AC, AB, AA, BE, BD, BC, BB, BA, CE, CD, CC, CB, CA, DE, DD, DC, DB, DA, EE, ED, EC, EB, EA].
 
-pnt(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<EE:8, ED:8, EC:8, EB:8, EA:8, DE:8, DD:8, DC:8, DB:8, DA:8, CE:8, CD:8, CC:8, CB:8, CA:8, BE:8, BD:8, BC:8, BB:8, BA:8, AE:8, AD:8, AC:8, AB:8, AA:8>>.
+hor([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [EA, EB, EC, ED, EE, DA, DB, DC, DD, DE, CA, CB, CC, CD, CE, BA, BB, BC, BD, BE, AA, AB, AC, AD, AE].
 
-bck(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<AA:8, BA:8, CA:8, DA:8, EA:8, AB:8, BB:8, CB:8, DB:8, EB:8, AC:8, BC:8, CC:8, DC:8, EC:8, AD:8, BD:8, CD:8, DD:8, ED:8, AE:8, BE:8, CE:8, DE:8, EE:8>>.
+pnt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [EE, ED, EC, EB, EA, DE, DD, DC, DB, DA, CE, CD, CC, CB, CA, BE, BD, BC, BB, BA, AE, AD, AC, AB, AA].
 
-fwd(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<EE:8, DE:8, CE:8, BE:8, AE:8, ED:8, DD:8, CD:8, BD:8, AD:8, EC:8, DC:8, CC:8, BC:8, AC:8, EB:8, DB:8, CB:8, BB:8, AB:8, EA:8, DA:8, CA:8, BA:8, AA:8>>.
+bck([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AA, BA, CA, DA, EA, AB, BB, CB, DB, EB, AC, BC, CC, DC, EC, AD, BD, CD, DD, ED, AE, BE, CE, DE, EE].
 
-lft(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<AE:8, BE:8, CE:8, DE:8, EE:8, AD:8, BD:8, CD:8, DD:8, ED:8, AC:8, BC:8, CC:8, DC:8, EC:8, AB:8, BB:8, CB:8, DB:8, EB:8, AA:8, BA:8, CA:8, DA:8, EA:8>>.
+fwd([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [EE, DE, CE, BE, AE, ED, DD, CD, BD, AD, EC, DC, CC, BC, AC, EB, DB, CB, BB, AB, EA, DA, CA, BA, AA].
 
-rgt(<<AA:8, AB:8, AC:8, AD:8, AE:8, BA:8, BB:8, BC:8, BD:8, BE:8, CA:8, CB:8, CC:8, CD:8, CE:8, DA:8, DB:8, DC:8, DD:8, DE:8, EA:8, EB:8, EC:8, ED:8, EE:8>>) -> 
-    <<EA:8, DA:8, CA:8, BA:8, AA:8, EB:8, DB:8, CB:8, BB:8, AB:8, EC:8, DC:8, CC:8, BC:8, AC:8, ED:8, DD:8, CD:8, BD:8, AD:8, EE:8, DE:8, CE:8, BE:8, AE:8>>.
+lft([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AE, BE, CE, DE, EE, AD, BD, CD, DD, ED, AC, BC, CC, DC, EC, AB, BB, CB, DB, EB, AA, BA, CA, DA, EA].
+
+rgt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [EA, DA, CA, BA, AA, EB, DB, CB, BB, AB, EC, DC, CC, BC, AC, ED, DD, CD, BD, AD, EE, DE, CE, BE, AE].
+
+
+x01([AA, AB, AC, AD, AE]) -> 
+    [AB, AC, AD, AE, AA];
+x01([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AB, AC, AD, AE, AA, BB, BC, BD, BE, BA, CB, CC, CD, CE, CA, DB, DC, DD, DE, DA, EB, EC, ED, EE, EA].
+
+x02([AA, AB, AC, AD, AE]) -> 
+    [AC, AD, AE, AA, AB];
+x02([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AC, AD, AE, AA, AB, BC, BD, BE, BA, BB, CC, CD, CE, CA, CB, DC, DD, DE, DA, DB, EC, ED, EE, EA, EB].
+
+x03([AA, AB, AC, AD, AE]) -> 
+    [AD, AE, AA, AB, AC];
+x03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AD, AE, AA, AB, AC, BD, BE, BA, BB, BC, CD, CE, CA, CB, CC, DD, DE, DA, DB, DC, ED, EE, EA, EB, EC].
+
+x04([AA, AB, AC, AD, AE]) -> 
+    [AE, AA, AB, AC, AD];
+x04([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AE, AA, AB, AC, AD, BE, BA, BB, BC, BD, CE, CA, CB, CC, CD, DE, DA, DB, DC, DD, EE, EA, EB, EC, ED].
+
+
+y01([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE].
+
+y02([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE].
+
+y03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE].
+
+y04([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE].
 
 
