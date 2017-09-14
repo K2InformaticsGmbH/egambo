@@ -36,36 +36,36 @@ rgt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD,
 
 
 x01([AA, AB, AC, AD, AE]) -> 
-    [AB, AC, AD, AE, AA];
+    [AE, AA, AB, AC, AD];
 x01([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [AB, AC, AD, AE, AA, BB, BC, BD, BE, BA, CB, CC, CD, CE, CA, DB, DC, DD, DE, DA, EB, EC, ED, EE, EA].
+    [AE, AA, AB, AC, AD, BE, BA, BB, BC, BD, CE, CA, CB, CC, CD, DE, DA, DB, DC, DD, EE, EA, EB, EC, ED].
 
 x02([AA, AB, AC, AD, AE]) -> 
-    [AC, AD, AE, AA, AB];
-x02([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [AC, AD, AE, AA, AB, BC, BD, BE, BA, BB, CC, CD, CE, CA, CB, DC, DD, DE, DA, DB, EC, ED, EE, EA, EB].
-
-x03([AA, AB, AC, AD, AE]) -> 
     [AD, AE, AA, AB, AC];
-x03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+x02([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [AD, AE, AA, AB, AC, BD, BE, BA, BB, BC, CD, CE, CA, CB, CC, DD, DE, DA, DB, DC, ED, EE, EA, EB, EC].
 
+x03([AA, AB, AC, AD, AE]) -> 
+    [AC, AD, AE, AA, AB];
+x03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [AC, AD, AE, AA, AB, BC, BD, BE, BA, BB, CC, CD, CE, CA, CB, DC, DD, DE, DA, DB, EC, ED, EE, EA, EB].
+
 x04([AA, AB, AC, AD, AE]) -> 
-    [AE, AA, AB, AC, AD];
+    [AB, AC, AD, AE, AA];
 x04([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [AE, AA, AB, AC, AD, BE, BA, BB, BC, BD, CE, CA, CB, CC, CD, DE, DA, DB, DC, DD, EE, EA, EB, EC, ED].
+    [AB, AC, AD, AE, AA, BB, BC, BD, BE, BA, CB, CC, CD, CE, CA, DB, DC, DD, DE, DA, EB, EC, ED, EE, EA].
 
 
 y01([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE].
+    [EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE].
 
 y02([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE].
-
-y03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE].
 
+y03([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+    [CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE].
+
 y04([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
-    [EA, EB, EC, ED, EE, AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE].
+    [BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE, AA, AB, AC, AD, AE].
 
 

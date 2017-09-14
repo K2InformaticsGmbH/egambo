@@ -36,9 +36,9 @@ rgt([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) ->
 
 
 x01([AA, AB, AC, AD]) -> 
-    [AB, AC, AD, AA];
+    [AD, AA, AB, AC];
 x01([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) -> 
-    [AB, AC, AD, AA, BB, BC, BD, BA, CB, CC, CD, CA, DB, DC, DD, DA].
+    [AD, AA, AB, AC, BD, BA, BB, BC, CD, CA, CB, CC, DD, DA, DB, DC].
 
 x02([AA, AB, AC, AD]) -> 
     [AC, AD, AA, AB];
@@ -46,18 +46,18 @@ x02([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) ->
     [AC, AD, AA, AB, BC, BD, BA, BB, CC, CD, CA, CB, DC, DD, DA, DB].
 
 x03([AA, AB, AC, AD]) -> 
-    [AD, AA, AB, AC];
+    [AB, AC, AD, AA];
 x03([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) -> 
-    [AD, AA, AB, AC, BD, BA, BB, BC, CD, CA, CB, CC, DD, DA, DB, DC].
+    [AB, AC, AD, AA, BB, BC, BD, BA, CB, CC, CD, CA, DB, DC, DD, DA].
 
 
 y01([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) -> 
-    [BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD, AA, AB, AC, AD].
+    [DA, DB, DC, DD, AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD].
 
 y02([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) -> 
     [CA, CB, CC, CD, DA, DB, DC, DD, AA, AB, AC, AD, BA, BB, BC, BD].
 
 y03([AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD]) -> 
-    [DA, DB, DC, DD, AA, AB, AC, AD, BA, BB, BC, BD, CA, CB, CC, CD].
+    [BA, BB, BC, BD, CA, CB, CC, CD, DA, DB, DC, DD, AA, AB, AC, AD].
 
 

@@ -24,49 +24,49 @@ pnt([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE,
 
 
 x01([AA, AB, AC, AD, AE, AF, AG]) -> 
-    [AB, AC, AD, AE, AF, AG, AA];
+    [AG, AA, AB, AC, AD, AE, AF];
 x01([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [AB, AC, AD, AE, AF, AG, AA, BB, BC, BD, BE, BF, BG, BA, CB, CC, CD, CE, CF, CG, CA, DB, DC, DD, DE, DF, DG, DA, EB, EC, ED, EE, EF, EG, EA, FB, FC, FD, FE, FF, FG, FA].
+    [AG, AA, AB, AC, AD, AE, AF, BG, BA, BB, BC, BD, BE, BF, CG, CA, CB, CC, CD, CE, CF, DG, DA, DB, DC, DD, DE, DF, EG, EA, EB, EC, ED, EE, EF, FG, FA, FB, FC, FD, FE, FF].
 
 x02([AA, AB, AC, AD, AE, AF, AG]) -> 
-    [AC, AD, AE, AF, AG, AA, AB];
-x02([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [AC, AD, AE, AF, AG, AA, AB, BC, BD, BE, BF, BG, BA, BB, CC, CD, CE, CF, CG, CA, CB, DC, DD, DE, DF, DG, DA, DB, EC, ED, EE, EF, EG, EA, EB, FC, FD, FE, FF, FG, FA, FB].
-
-x03([AA, AB, AC, AD, AE, AF, AG]) -> 
-    [AD, AE, AF, AG, AA, AB, AC];
-x03([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [AD, AE, AF, AG, AA, AB, AC, BD, BE, BF, BG, BA, BB, BC, CD, CE, CF, CG, CA, CB, CC, DD, DE, DF, DG, DA, DB, DC, ED, EE, EF, EG, EA, EB, EC, FD, FE, FF, FG, FA, FB, FC].
-
-x04([AA, AB, AC, AD, AE, AF, AG]) -> 
-    [AE, AF, AG, AA, AB, AC, AD];
-x04([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [AE, AF, AG, AA, AB, AC, AD, BE, BF, BG, BA, BB, BC, BD, CE, CF, CG, CA, CB, CC, CD, DE, DF, DG, DA, DB, DC, DD, EE, EF, EG, EA, EB, EC, ED, FE, FF, FG, FA, FB, FC, FD].
-
-x05([AA, AB, AC, AD, AE, AF, AG]) -> 
     [AF, AG, AA, AB, AC, AD, AE];
-x05([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
+x02([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
     [AF, AG, AA, AB, AC, AD, AE, BF, BG, BA, BB, BC, BD, BE, CF, CG, CA, CB, CC, CD, CE, DF, DG, DA, DB, DC, DD, DE, EF, EG, EA, EB, EC, ED, EE, FF, FG, FA, FB, FC, FD, FE].
 
+x03([AA, AB, AC, AD, AE, AF, AG]) -> 
+    [AE, AF, AG, AA, AB, AC, AD];
+x03([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
+    [AE, AF, AG, AA, AB, AC, AD, BE, BF, BG, BA, BB, BC, BD, CE, CF, CG, CA, CB, CC, CD, DE, DF, DG, DA, DB, DC, DD, EE, EF, EG, EA, EB, EC, ED, FE, FF, FG, FA, FB, FC, FD].
+
+x04([AA, AB, AC, AD, AE, AF, AG]) -> 
+    [AD, AE, AF, AG, AA, AB, AC];
+x04([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
+    [AD, AE, AF, AG, AA, AB, AC, BD, BE, BF, BG, BA, BB, BC, CD, CE, CF, CG, CA, CB, CC, DD, DE, DF, DG, DA, DB, DC, ED, EE, EF, EG, EA, EB, EC, FD, FE, FF, FG, FA, FB, FC].
+
+x05([AA, AB, AC, AD, AE, AF, AG]) -> 
+    [AC, AD, AE, AF, AG, AA, AB];
+x05([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
+    [AC, AD, AE, AF, AG, AA, AB, BC, BD, BE, BF, BG, BA, BB, CC, CD, CE, CF, CG, CA, CB, DC, DD, DE, DF, DG, DA, DB, EC, ED, EE, EF, EG, EA, EB, FC, FD, FE, FF, FG, FA, FB].
+
 x06([AA, AB, AC, AD, AE, AF, AG]) -> 
-    [AG, AA, AB, AC, AD, AE, AF];
+    [AB, AC, AD, AE, AF, AG, AA];
 x06([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [AG, AA, AB, AC, AD, AE, AF, BG, BA, BB, BC, BD, BE, BF, CG, CA, CB, CC, CD, CE, CF, DG, DA, DB, DC, DD, DE, DF, EG, EA, EB, EC, ED, EE, EF, FG, FA, FB, FC, FD, FE, FF].
+    [AB, AC, AD, AE, AF, AG, AA, BB, BC, BD, BE, BF, BG, BA, CB, CC, CD, CE, CF, CG, CA, DB, DC, DD, DE, DF, DG, DA, EB, EC, ED, EE, EF, EG, EA, FB, FC, FD, FE, FF, FG, FA].
 
 
 y01([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG].
+    [FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG].
 
 y02([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG].
+    [EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG].
 
 y03([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
     [DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG].
 
 y04([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG].
+    [CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG].
 
 y05([AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG]) -> 
-    [FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG, BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG].
+    [BA, BB, BC, BD, BE, BF, BG, CA, CB, CC, CD, CE, CF, CG, DA, DB, DC, DD, DE, DF, DG, EA, EB, EC, ED, EE, EF, EG, FA, FB, FC, FD, FE, FF, FG, AA, AB, AC, AD, AE, AF, AG].
 
 

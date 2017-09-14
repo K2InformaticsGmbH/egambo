@@ -79,7 +79,7 @@ gen_render_tx(W, H, S) ->
 
 tx_from_sym(W, X, S) -> 
     [$x,N1,N0] = atom_to_list(S),
-    (X + 10*(N1-$0) + N0-$0) rem W.
+    (X + W - 10*(N1-$0) - N0+$0) rem W.
 
 gen_output_pattern_tx(_, H, _, 0, H, Acc) -> list_to_binary(lists:nthtail(2, lists:flatten(lists:reverse(Acc))));
 gen_output_pattern_tx(W, H, S, W, Y, Acc) -> gen_output_pattern_tx(W, H, S, 0, Y+1, Acc); 
@@ -93,7 +93,7 @@ gen_render_ty(W, H, S) ->
 
 ty_from_sym(H, Y, S) -> 
     [$y,N1,N0] = atom_to_list(S),
-    (Y + 10*(N1-$0) + N0-$0) rem H.
+    (Y + H - 10*(N1-$0) - N0+$0) rem H.
 
 gen_output_pattern_ty(_, H, _, 0, H, Acc) -> list_to_binary(lists:nthtail(2, lists:flatten(lists:reverse(Acc))));
 gen_output_pattern_ty(W, H, S, W, Y, Acc) -> gen_output_pattern_ty(W, H, S, 0, Y+1, Acc); 
@@ -135,14 +135,14 @@ transy(W, H, TY, Board) -> apply(?SYM_MODULE(W, H), ty_sym(TY), [Board]).
 map(W, H, Board, Sym) when is_atom(Sym) -> 
     apply(?SYM_MODULE(W, H), Sym, [Board]);
 map(W, H, Board, {S,TX,TY}) when is_atom(S) -> 
-    apply(?SYM_MODULE(W, H), S, [transy(W, H, TY, transx(W, H, TX, Board))]). 
+    transy(W, H, TY, transx(W, H, TX, apply(?SYM_MODULE(W, H), S, [Board]))). 
 
 unmap(_, _, NBoard, ide) -> NBoard;
 unmap(W, H, NBoard, S) when S==hor;S==ver;S==pnt;S==bck;S==fwd -> map(W, H, NBoard, S);
 unmap(W, H, NBoard, {S,0,0}) -> unmap(W, H, NBoard, S);
 unmap(W, H, NBoard, lft) -> map(W, H, NBoard, rgt);
 unmap(W, H, NBoard, rgt) -> map(W, H, NBoard, lft);
-unmap(W, H, NBoard, {S,TX,TY}) -> transx(W, H, W-TX, transy(W, H, H-TY, unmap(W, H, NBoard, S))).
+unmap(W, H, NBoard, {S,TX,TY}) -> unmap(W, H, transx(W, H, W-TX, transy(W, H, H-TY, NBoard)), S).
 
 t_off(Dim) -> lists:seq(0,Dim-1).
 
@@ -175,9 +175,9 @@ map_move(W, H, Idx, S) when is_atom(S) ->
 map_move(W, H, Idx, {S,0,0}) ->    
     map_sym(W, H, Idx, S);
 map_move(W, H, Idx, {S,TX,TY}) -> 
-    IdxX = idx(W, H, x(W, H, Idx)+TX-W, y(W, H, Idx)),
-    IdxY = idx(W, H, x(W, H, IdxX), y(W, H, IdxX)+TY-H),
-    map_sym(W, H, IdxY, S).
+    IdxS = map_sym(W, H, Idx, S),
+    IdxX = idx(W, H, (x(W, H, IdxS)+TX) rem W, y(W, H, IdxS)),
+    idx(W, H, x(W, H, IdxX), (y(W, H, IdxX)+TY) rem H).
 
 map_sym(_, _, Idx, ide) ->    Idx;
 map_sym(W, H, Idx, ver) ->    idx(W, H, W-1-x(W, H, Idx), y(W, H, Idx));
@@ -193,9 +193,9 @@ unmap_move(W, H, Idx, S) when is_atom(S) ->
 unmap_move(W, H, Idx, {S,0,0}) ->    
     unmap_sym(W, H, Idx, S);
 unmap_move(W, H, Idx, {S,TX,TY}) -> 
-    IdxS = unmap_sym(W, H, Idx, S),
-    IdxY = idx(W, H, x(W, H, IdxS), y(W, H, IdxS)+H-TY),
-    idx(W, H, x(W, H, IdxY)+W-TX, y(W, H, IdxY)).
+    IdxY = idx(W, H, x(W, H, Idx), (y(W, H, Idx)+H-TY) rem H),
+    IdxX = idx(W, H, (x(W, H, IdxY)+W-TX) rem W, y(W, H, IdxY)),
+    unmap_sym(W, H, IdxX, S).
 
 unmap_sym(W, H, Idx, rgt) ->  map_sym(W, H, Idx, lft);
 unmap_sym(W, H, Idx, lft) ->  map_sym(W, H, Idx, rgt);
@@ -219,12 +219,42 @@ map_33_test_() ->
     , {"pnt", ?_assertEqual("ihgfedcba", map(W, H, Board, pnt))}
     , {"bck", ?_assertEqual("adgbehcfi", map(W, H, Board, bck))}
     , {"fwd", ?_assertEqual("ifchebgda", map(W, H, Board, fwd))}
-    , {"lft", ?_assertEqual("gdahebifc", map(W, H, Board, rgt))}
-    , {"rgt", ?_assertEqual("cfibehadg", map(W, H, Board, lft))}
-    , {"idex1", ?_assertEqual("bcaefdhig", map(W, H, Board, {ide,1,0}))}
-    , {"idex2", ?_assertEqual("cabfdeigh", map(W, H, Board, {ide,2,0}))}
-    , {"idey1", ?_assertEqual("defghiabc", map(W, H, Board, {ide,0,1}))}
-    , {"idey2", ?_assertEqual("ghiabcdef", map(W, H, Board, {ide,0,2}))}
+    , {"rgt", ?_assertEqual("gdahebifc", map(W, H, Board, rgt))}
+    , {"lft", ?_assertEqual("cfibehadg", map(W, H, Board, lft))}
+    , {"idex1", ?_assertEqual("cabfdeigh", map(W, H, Board, {ide,1,0}))}
+    , {"idex2", ?_assertEqual("bcaefdhig", map(W, H, Board, {ide,2,0}))}
+    , {"idey1", ?_assertEqual("ghiabcdef", map(W, H, Board, {ide,0,1}))}
+    , {"idey2", ?_assertEqual("defghiabc", map(W, H, Board, {ide,0,2}))}
+    , {"fwdx2", ?_assertEqual("fciebhdag", map(W, H, Board, {fwd,2,0}))}
+    , {"fwdy2", ?_assertEqual("hebgdaifc", map(W, H, Board, {fwd,0,2}))}
+    , {"rgtx1y1", ?_assertEqual("cifagdbhe", map(W, H, Board, {rgt,1,1}))}
+    , {"rgtx1y2", ?_assertEqual("bhecifagd", map(W, H, Board, {rgt,1,2}))}
+    ].
+
+map_move_33_test_() ->
+    W = 3,
+    H = 3,
+    % Board = lists:seq($a,$a+W*H-1),
+    [ {"fwdx2y0", ?_assertEqual(7, map_move(W, H, 0, {fwd,2,0}))}
+    , {"fwdx0y2", ?_assertEqual(5, map_move(W, H, 0, {fwd,0,2}))}
+    , {"rgtx1y1", ?_assertEqual(3, map_move(W, H, 0, {rgt,1,1}))}
+    , {"rgtx1y2", ?_assertEqual(6, map_move(W, H, 0, {rgt,1,2}))}
+    ].
+
+map_44_test_() ->
+    W = 4,
+    H = 4,
+    Board = lists:seq($a,$a+W*H-1),
+    [ {"ide", ?_assertEqual("abcdefghijklmnop", map(W, H, Board, ide))}
+    , {"ver", ?_assertEqual("dcbahgfelkjiponm", map(W, H, Board, ver))}
+    , {"hor", ?_assertEqual("mnopijklefghabcd", map(W, H, Board, hor))}
+    , {"pnt", ?_assertEqual("ponmlkjihgfedcba", map(W, H, Board, pnt))}
+    , {"bck", ?_assertEqual("aeimbfjncgkodhlp", map(W, H, Board, bck))}
+    , {"fwd", ?_assertEqual("plhdokgcnjfbmiea", map(W, H, Board, fwd))}
+    , {"lft", ?_assertEqual("dhlpcgkobfjnaeim", map(W, H, Board, lft))}
+    , {"rgt", ?_assertEqual("mieanjfbokgcplhd", map(W, H, Board, rgt))}
+    , {"idex1", ?_assertEqual("dabchefglijkpmno", map(W, H, Board, {ide,1,0}))}
+    , {"rgtx1y1", ?_assertEqual("dplhamiebnjfcokg", map(W, H, Board, {rgt,1,1}))}
     ].
 
 sym_44_test_() ->
@@ -294,6 +324,8 @@ map_move_test(W, H, G, P, Board) ->
     {label({Board,S}), ?_assertEqual(Board, [lists:nth(map_move(W, H, Idx, S)+1, NBoard) || Idx <- lists:seq(0, W*H-1)])}.
 
 map_move_tup(W, H, G, P) -> map_move_test(W, H, G, P, egambo_tictac:shuffle(lists:seq($A,$A+W*H-1))).
+
+map_move_33p_test_() -> [map_move_tup(3, 3, false, true) || _ <- lists:seq(0,9)].
 
 map_move_44_test_() -> [map_move_tup(4, 4, false, false) || _ <- lists:seq(0,9)].
 

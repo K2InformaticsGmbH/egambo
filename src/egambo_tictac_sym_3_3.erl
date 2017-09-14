@@ -36,20 +36,20 @@ rgt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) ->
 
 
 x01([AA, AB, AC]) -> 
-    [AB, AC, AA];
+    [AC, AA, AB];
 x01([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
-    [AB, AC, AA, BB, BC, BA, CB, CC, CA].
+    [AC, AA, AB, BC, BA, BB, CC, CA, CB].
 
 x02([AA, AB, AC]) -> 
-    [AC, AA, AB];
+    [AB, AC, AA];
 x02([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
-    [AC, AA, AB, BC, BA, BB, CC, CA, CB].
+    [AB, AC, AA, BB, BC, BA, CB, CC, CA].
 
 
 y01([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
-    [BA, BB, BC, CA, CB, CC, AA, AB, AC].
+    [CA, CB, CC, AA, AB, AC, BA, BB, BC].
 
 y02([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
-    [CA, CB, CC, AA, AB, AC, BA, BB, BC].
+    [BA, BB, BC, CA, CB, CC, AA, AB, AC].
 
 
