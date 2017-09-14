@@ -315,9 +315,12 @@ sample_move(Space, IAliases, Moves, FAliases, FScores, MTE) ->
     {_, UsedMoves} = lists:split(MTE, Moves),             % used moves to construct the board (others thrown away)
     sample_board(Space, IAliases, lists:reverse(UsedMoves), FAliases, FScores, MTE).
 
-sample_board(Board, [X|IAliases], [{X,Move}], [X|_], FScores, MTE) ->
+sample_board(Board, [X|IAliases], [{X,Move}], [X|_], FScores, MTE) when is_binary(Board) ->
     % Player matches initial player and that player's final score 
     [binary_to_list(Board), [X|IAliases], Move, FScores, MTE];
+sample_board(Board, [X|IAliases], [{X,Move}], [X|_], FScores, MTE) ->
+    % Player matches initial player and that player's final score 
+    [Board, [X|IAliases], Move, FScores, MTE];
 sample_board(Board, [X|IAliases], [{X,Move}], FAliases, FScores, MTE) ->
     % Player matches initial player but final score needs to be rotated 
     sample_board(Board, [X|IAliases], [{X,Move}], rotate(FAliases), rotate(FScores), MTE);
@@ -337,13 +340,16 @@ sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) ->
 samples(Space, IAliases, Moves, FAliases, FScores) ->
     [sample_move(Space, IAliases, Moves, FAliases, FScores, MTE) || MTE <- lists:seq(0,length(Moves)-1)].
 
--spec norm_aliases(binary(), [egAlias()], [egAlias()]) -> binary().
+-spec norm_aliases(binary() | list(), [egAlias()], [egAlias()]) -> list().
 %% transform a tictac board by swapping player aliases to a given next player
 %% used to prepare th board for bots whinorm_aliases(Board, Aliases, Aliases) ch prefer to always play as X
 %% can also be used to transform the returned NewBoard back to the real player alias
+norm_aliases(Board, Aliases, Aliases) when is_binary(Board) -> binary_to_list(Board);
 norm_aliases(Board, Aliases, Aliases) -> Board;
-norm_aliases(Board, FromAliases, ToAliases) -> 
-    list_to_binary([flip(P, FromAliases, ToAliases) || P <- binary_to_list(Board)]).
+norm_aliases(Board, FromAliases, ToAliases) when is_binary(Board) -> 
+    [flip(P, FromAliases, ToAliases) || P <- binary_to_list(Board)];
+norm_aliases(Board, FromAliases, ToAliases)  -> 
+    [flip(P, FromAliases, ToAliases) || P <- Board].
 
 put_options(Board, Width, Height, false) ->
     shuffle(lists:usort([ case B of ?AVAILABLE -> I; _ -> false end || {B,I} <- lists:zip(binary_to_list(Board), lists:seq(0,Width*Height-1))]) -- [false]);

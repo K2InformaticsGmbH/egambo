@@ -252,22 +252,36 @@ ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
         [Input, _Players, Move, [Score|_], MTE] <- egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores)
     ].
 
-%% Format a single sample for ann use (Board size input vector, Board size output vector)
+%% Format a single (already Alias-normalized) sample for ann use (Board size input vector, Board size / Board Width output vector)
 %% and aggregate into the training table using an input hash
 ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
     #egGameType{params=#{width:=Width, height:=Height, gravity:=Gravity, periodic:=Periodic}} = egambo_game:read_type(GameTypeId),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, Board),
     Gain = ann_sample_gain(length(Input), Score, MTE),
-    Move1 = Move + 1,           % one based index of move
-    F = fun(I) -> 
-        Inp=lists:nth(I, Input), 
-        if 
-            I==Move1 -> {1, Gain};   % move taken in sample
-            Inp==32 ->  {0, 0};      % alternative legal move, not taken here
-            true ->     0            % illegal move (occupied)
-        end 
-    end, 
-    Output = lists:map(F, lists:seq(1, length(Input))),
+    Output = case Gravity of
+        false ->
+            Move1 = Move + 1,                % one based index of move
+            F = fun(I) -> 
+                Inp=lists:nth(I, Input), 
+                if 
+                    I==Move1 -> {1, Gain};   % move taken in sample
+                    Inp==32 ->  {0, 0};      % alternative legal move, not taken here
+                    true ->     0            % illegal move (occupied)
+                end 
+            end, 
+            egambo_tictac_sym:map(Width, Height, lists:map(F, lists:seq(1, length(Input))), Sym);
+        true ->
+            Move1 = Move rem Width + 1,      % one based index of move
+            F = fun(I) -> 
+                Inp=lists:nth(I, Input), 
+                if 
+                    I==Move1 -> {1, Gain};   % move taken in sample
+                    Inp==32 ->  {0, 0};      % alternative legal move, not taken here
+                    true ->     0            % illegal move (occupied)
+                end 
+            end, 
+            egambo_tictac_sym:map(Width, Height, lists:map(F, lists:seq(1, Width)), Sym)
+    end,
     Hash = erlang:phash2(Input, 4294967296),
     Key = {GameTypeId, Hash},
     case imem_meta:read(?ANN_TRAIN, Key) of
@@ -288,7 +302,9 @@ ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
                     imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey, qos=1, input=Input, output=Output}),
                     {-Hash, Output};
                 [#egTicTacAnnSample{qos=AN, input=Input, output=AltOut}] ->
-                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey, qos=AN+1, input=Input, output=vector_add(AltOut, Output)}),
+                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey
+                                                , qos=AN+1, input=Input
+                                                , output=vector_add(AltOut, Output)}),
                     {-Hash, Output};
                 [#egTicTacAnnSample{input=CollInput}] ->
                     ?Info("Unrecoverable input hash collision OldInput= ~p  NewInput=~p ignored",[CollInput, Input]),
@@ -531,8 +547,8 @@ play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, [Player|_]=NAlia
     ?Info("play_bot_ann Board, NAliases ~p ~p", [Board, NAliases]),
     ABoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases),
     ?Info("play_bot_ann ABoard after alias transform ~p ", [ABoard]),
-    {Sym, NormBoard} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
-    ?Info("play_bot_ann  Symmetry Transformation and normalized Board ~p ~p", [Sym, NormBoard]),
+    {NormBoard, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
+    ?Info("play_bot_ann normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
     NormIn = ann_norm_input(binary_to_list(NormBoard)),
     ?Info("play_bot_ann Network, NormIn ~p ~p ", [Network, NormIn]),
     Output = ann:predict(Network, NormIn),
