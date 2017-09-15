@@ -256,11 +256,13 @@ ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
 %% and aggregate into the training table using an input hash
 ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
     #egGameType{params=#{width:=Width, height:=Height, gravity:=Gravity, periodic:=Periodic}} = egambo_game:read_type(GameTypeId),
+    % ?Info("ann_sample_single Board and Move ~p ~p", [Board, Move]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, Board),
+    % ?Info("ann_sample_single Input and Sym ~p ~p", [Input, Sym]),
     Gain = ann_sample_gain(length(Input), Score, MTE),
     Output = case Gravity of
         false ->
-            Move1 = Move + 1,                % one based index of move
+            Move1 = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,  % one based index of move
             F = fun(I) -> 
                 Inp=lists:nth(I, Input), 
                 if 
@@ -269,9 +271,9 @@ ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
                     true ->     0            % illegal move (occupied)
                 end 
             end, 
-            egambo_tictac_sym:map(Width, Height, lists:map(F, lists:seq(1, length(Input))), Sym);
+            lists:map(F, lists:seq(1, length(Input)));
         true ->
-            Move1 = Move rem Width + 1,      % one based index of move
+            Move1 = egambo_tictac_sym:map_move(Width, Height, Move rem Width, Sym) + 1, % one based index of move
             F = fun(I) -> 
                 Inp=lists:nth(I, Input), 
                 if 
@@ -280,8 +282,9 @@ ann_sample_single(GameTypeId, Board, Move, Score, MTE) ->
                     true ->     0            % illegal move (occupied)
                 end 
             end, 
-            egambo_tictac_sym:map(Width, Height, lists:map(F, lists:seq(1, Width)), Sym)
+            lists:map(F, lists:seq(1, Width))
     end,
+    % ?Info("ann_sample_single Output ~p", [Output]),
     Hash = erlang:phash2(Input, 4294967296),
     Key = {GameTypeId, Hash},
     case imem_meta:read(?ANN_TRAIN, Key) of
