@@ -63,7 +63,7 @@ function init(container, width, height) {
         svg.attr('viewBox', vBox.x + ' ' + vBox.y + ' ' + vBox.w + ' ' + vBox.h);
 
 
-        if(Array.isArray(data[0])) {
+        if(isMoves(data)) {
             data.reverse();
             // Initialize an empty board before adding the moves...
             for(var i = 0; i < height*width; ++i) {
@@ -89,6 +89,11 @@ function init(container, width, height) {
                 };
             }
         } else {
+            if(Array.isArray(data[0])) {
+                data = data.map(function(element) {
+                    return element[1] / element[0];
+                });
+            }
             for(var i = 0; i < height; ++i) {
                 for(var j = 0; j < width; ++j) {
                     var id = i * width + j;
@@ -107,6 +112,12 @@ function init(container, width, height) {
             }
         }
         return board;
+    }
+
+    function isMoves(data) {
+        return data.every(function(element) {
+            return (element[0] == 88 || element[0] == 79);
+        });
     }
 
     function resize(w, h) {
