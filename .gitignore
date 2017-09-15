@@ -11,6 +11,7 @@ lib-cov
 
 % Erlang
 _build
+_checkouts
 egambo*@*/
 erl_crash.dump
 log
