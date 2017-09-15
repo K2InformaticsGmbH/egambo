@@ -167,6 +167,7 @@ create_neural_network(Layers, Activation) when is_atom(Activation) ->
   create_neural_network(Layers, Weights, Activation).
 
 create_neural_network(Layers, Weights, Activation) when length(Layers) > 1 ->
+  io:format("create_neural_network...~n"),
   Neurons = [[run_neuron(Activation) || _ <- lists:seq(1, InLayer)] || InLayer <- modify_layers(Layers)],
   full_mesh_connect(Neurons, Weights),
   NN = spawn_link(ann, neural_network, [
@@ -180,9 +181,11 @@ create_neural_network(Layers, Weights, Activation) when length(Layers) > 1 ->
   lists:foreach(fun(Pid) ->
                   Pid ! {main_pid, NN}
                 end, lists:concat(Neurons)),            % connect InputLayer to NN process
+  io:format("create_neural_network ~p succeeded~n",[NN]),
   NN;
 create_neural_network(_, _, _) ->
-  io:format("Not enought layers.~n"), fail.
+  io:format("Not enought layers.~n"), 
+  fail.
 
 neural_network(InputLayer, OutputLayer, BiasNeurons, Token) -> % Network process event loop
   erlang:garbage_collect(),
