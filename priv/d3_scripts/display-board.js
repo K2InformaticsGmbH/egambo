@@ -89,13 +89,15 @@ function init(container, width, height) {
                 };
             }
         } else {
-            data = data.map(function(element) {
-                if(Array.isArray(element)) {
-                    return element[1] / element[0];
-                } else {
-                    return element;
-                }
-            });
+            if(Array.isArray(data)) {
+                data = data.map(function(element) {
+                    if(Array.isArray(element)) {
+                        return element[1] / element[0];
+                    } else {
+                        return element;
+                    }
+                });
+            }
             for(var i = 0; i < height; ++i) {
                 for(var j = 0; j < width; ++j) {
                     var id = i * width + j;
@@ -117,6 +119,7 @@ function init(container, width, height) {
     }
 
     function isMoves(data) {
+        if (!Array.isArray(data)) { return false; }
         return data.every(function(element) {
             return (element[0] == 88 || element[0] == 79);
         });
