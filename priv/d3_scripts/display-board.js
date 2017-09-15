@@ -89,11 +89,13 @@ function init(container, width, height) {
                 };
             }
         } else {
-            if(Array.isArray(data[0])) {
-                data = data.map(function(element) {
+            data = data.map(function(element) {
+                if(Array.isArray(element)) {
                     return element[1] / element[0];
-                });
-            }
+                } else {
+                    return element;
+                }
+            });
             for(var i = 0; i < height; ++i) {
                 for(var j = 0; j < width; ++j) {
                     var id = i * width + j;
