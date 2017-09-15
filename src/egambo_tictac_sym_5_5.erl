@@ -1,6 +1,6 @@
 -module(egambo_tictac_sym_5_5).
 
--export([ide/1, ver/1, hor/1, pnt/1, bck/1, fwd/1, lft/1, rgt/1]).
+-export([a_ide/1, b_ver/1, c_hor/1, d_pnt/1, e_bck/1, f_fwd/1, g_lft/1, h_rgt/1]).
 
 -export([x01/1, x02/1, x03/1, x04/1]).
 
@@ -8,30 +8,30 @@
 
 % generated in egambo_tictac_sym
 
-ide(Board) -> Board.
+a_ide(Board) -> Board.
 
-ver([AA, AB, AC, AD, AE]) -> 
+b_ver([AA, AB, AC, AD, AE]) -> 
     [AE, AD, AC, AB, AA];
 
-ver([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+b_ver([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [AE, AD, AC, AB, AA, BE, BD, BC, BB, BA, CE, CD, CC, CB, CA, DE, DD, DC, DB, DA, EE, ED, EC, EB, EA].
 
-hor([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+c_hor([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [EA, EB, EC, ED, EE, DA, DB, DC, DD, DE, CA, CB, CC, CD, CE, BA, BB, BC, BD, BE, AA, AB, AC, AD, AE].
 
-pnt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+d_pnt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [EE, ED, EC, EB, EA, DE, DD, DC, DB, DA, CE, CD, CC, CB, CA, BE, BD, BC, BB, BA, AE, AD, AC, AB, AA].
 
-bck([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+e_bck([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [AA, BA, CA, DA, EA, AB, BB, CB, DB, EB, AC, BC, CC, DC, EC, AD, BD, CD, DD, ED, AE, BE, CE, DE, EE].
 
-fwd([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+f_fwd([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [EE, DE, CE, BE, AE, ED, DD, CD, BD, AD, EC, DC, CC, BC, AC, EB, DB, CB, BB, AB, EA, DA, CA, BA, AA].
 
-lft([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+g_lft([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [AE, BE, CE, DE, EE, AD, BD, CD, DD, ED, AC, BC, CC, DC, EC, AB, BB, CB, DB, EB, AA, BA, CA, DA, EA].
 
-rgt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
+h_rgt([AA, AB, AC, AD, AE, BA, BB, BC, BD, BE, CA, CB, CC, CD, CE, DA, DB, DC, DD, DE, EA, EB, EC, ED, EE]) -> 
     [EA, DA, CA, BA, AA, EB, DB, CB, BB, AB, EC, DC, CC, BC, AC, ED, DD, CD, BD, AD, EE, DE, CE, BE, AE].
 
 

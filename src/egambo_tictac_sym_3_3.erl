@@ -1,6 +1,6 @@
 -module(egambo_tictac_sym_3_3).
 
--export([ide/1, ver/1, hor/1, pnt/1, bck/1, fwd/1, lft/1, rgt/1]).
+-export([a_ide/1, b_ver/1, c_hor/1, d_pnt/1, e_bck/1, f_fwd/1, g_lft/1, h_rgt/1]).
 
 -export([x01/1, x02/1]).
 
@@ -8,30 +8,30 @@
 
 % generated in egambo_tictac_sym
 
-ide(Board) -> Board.
+a_ide(Board) -> Board.
 
-ver([AA, AB, AC]) -> 
+b_ver([AA, AB, AC]) -> 
     [AC, AB, AA];
 
-ver([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+b_ver([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [AC, AB, AA, BC, BB, BA, CC, CB, CA].
 
-hor([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+c_hor([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [CA, CB, CC, BA, BB, BC, AA, AB, AC].
 
-pnt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+d_pnt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [CC, CB, CA, BC, BB, BA, AC, AB, AA].
 
-bck([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+e_bck([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [AA, BA, CA, AB, BB, CB, AC, BC, CC].
 
-fwd([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+f_fwd([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [CC, BC, AC, CB, BB, AB, CA, BA, AA].
 
-lft([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+g_lft([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [AC, BC, CC, AB, BB, CB, AA, BA, CA].
 
-rgt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
+h_rgt([AA, AB, AC, BA, BB, BC, CA, CB, CC]) -> 
     [CA, BA, AA, CB, BB, AB, CC, BC, AC].
 
 

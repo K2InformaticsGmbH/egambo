@@ -552,7 +552,7 @@ play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, [Player|_]=NAlia
     ?Info("play_bot_ann ABoard after alias transform ~p ", [ABoard]),
     {NormBoard, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
     ?Info("play_bot_ann normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
-    NormIn = ann_norm_input(binary_to_list(NormBoard)),
+    NormIn = ann_norm_input(NormBoard),
     ?Info("play_bot_ann Network, NormIn ~p ~p ", [Network, NormIn]),
     Output = ann:predict(Network, NormIn),
     ?Info("play_bot_ann network Output ~p",[Output]),    

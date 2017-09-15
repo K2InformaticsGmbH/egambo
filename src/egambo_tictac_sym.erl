@@ -11,9 +11,9 @@
         , unmap_move/4  % (W, H, NMove, Sym) ->         Move            map 0-based move index back to original move index (add 1 to point to the list item)
         ]).
 
--define(GRAVITY_SYMMETRIES,[ide, ver]).
--define(RECT_SYMMETRIES,   [ide, ver, hor, pnt]).
--define(SQUARE_SYMMETRIES, [ide, ver, hor, pnt, bck, fwd, lft, rgt]).
+-define(GRAVITY_SYMMETRIES,[a_ide, b_ver]).
+-define(RECT_SYMMETRIES,   [a_ide, b_ver, c_hor, d_pnt]).
+-define(SQUARE_SYMMETRIES, [a_ide, b_ver, c_hor, d_pnt, e_bck, f_fwd, g_lft, h_rgt]).
 
 -define(SYM_MODULE(__W, __H), list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_~p_~p",[__W, __H])))).
 
@@ -37,8 +37,8 @@ ty_export(W) ->
     F = fun(X) -> atom_to_list(X) end,
     lists:flatten(lists:join("/1, ", lists:map(F, ty_symmetries(W))) ++ "/1").
 
-gen_render(_, 1, ide) -> <<"ide(Board) -> Board.\n\n">>;     % Identity transformation
-gen_render(_, _, ide) -> <<>>;                  % Can use identity transformation from gravity
+gen_render(_, 1, a_ide) -> <<"a_ide(Board) -> Board.\n\n">>;     % Identity transformation
+gen_render(_, _, a_ide) -> <<>>;                  % Can use identity transformation from gravity
 gen_render(W, 1, S) ->
     Symmetry = atom_to_binary(S, utf8), 
     InPat = gen_input_pattern(W, 1, 0, 0, []),
@@ -58,13 +58,13 @@ gen_input_pattern(W, H, X, Y, Acc) -> gen_input_pattern(W, H, X+1, Y, [", " ++ v
 
 gen_output_pattern(_, H, _, 0, H, Acc) -> list_to_binary(lists:nthtail(2, lists:flatten(lists:reverse(Acc))));
 gen_output_pattern(W, H, S, W, Y, Acc) -> gen_output_pattern(W, H, S, 0, Y+1, Acc); 
-gen_output_pattern(W, H, ver=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-X,Y)|Acc]);
-gen_output_pattern(W, H, hor=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(X,H-1-Y)|Acc]);
-gen_output_pattern(W, H, pnt=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-X,H-1-Y)|Acc]);
-gen_output_pattern(W, H, bck=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(Y,X)|Acc]);
-gen_output_pattern(W, H, fwd=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(H-1-Y,W-1-X)|Acc]);
-gen_output_pattern(W, H, lft=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-Y,X)|Acc]);
-gen_output_pattern(W, H, rgt=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(Y,W-1-X)|Acc]).
+gen_output_pattern(W, H, b_ver=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-X,Y)|Acc]);
+gen_output_pattern(W, H, c_hor=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(X,H-1-Y)|Acc]);
+gen_output_pattern(W, H, d_pnt=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-X,H-1-Y)|Acc]);
+gen_output_pattern(W, H, e_bck=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(Y,X)|Acc]);
+gen_output_pattern(W, H, f_fwd=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(H-1-Y,W-1-X)|Acc]);
+gen_output_pattern(W, H, g_lft=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(W-1-Y,X)|Acc]);
+gen_output_pattern(W, H, h_rgt=S, X, Y, Acc) -> gen_output_pattern(W, H, S, X+1, Y, [", " ++ var_name(Y,W-1-X)|Acc]).
 
 gen_render_tx(W, 1, S) ->
     Symmetry = atom_to_binary(S, utf8), 
@@ -137,11 +137,11 @@ map(W, H, Board, Sym) when is_atom(Sym) ->
 map(W, H, Board, {S,TX,TY}) when is_atom(S) -> 
     transy(W, H, TY, transx(W, H, TX, apply(?SYM_MODULE(W, H), S, [Board]))). 
 
-unmap(_, _, NBoard, ide) -> NBoard;
-unmap(W, H, NBoard, S) when S==hor;S==ver;S==pnt;S==bck;S==fwd -> map(W, H, NBoard, S);
+unmap(_, _, NBoard, a_ide) -> NBoard;
+unmap(W, H, NBoard, S) when S==b_ver;S==c_hor;S==d_pnt;S==e_bck;S==f_fwd -> map(W, H, NBoard, S);
 unmap(W, H, NBoard, {S,0,0}) -> unmap(W, H, NBoard, S);
-unmap(W, H, NBoard, lft) -> map(W, H, NBoard, rgt);
-unmap(W, H, NBoard, rgt) -> map(W, H, NBoard, lft);
+unmap(W, H, NBoard, g_lft) -> map(W, H, NBoard, h_rgt);
+unmap(W, H, NBoard, h_rgt) -> map(W, H, NBoard, g_lft);
 unmap(W, H, NBoard, {S,TX,TY}) -> unmap(W, H, transx(W, H, W-TX, transy(W, H, H-TY, NBoard)), S).
 
 t_off(Dim) -> lists:seq(0,Dim-1).
@@ -179,14 +179,14 @@ map_move(W, H, Idx, {S,TX,TY}) ->
     IdxX = idx(W, H, (x(W, H, IdxS)+TX) rem W, y(W, H, IdxS)),
     idx(W, H, x(W, H, IdxX), (y(W, H, IdxX)+TY) rem H).
 
-map_sym(_, _, Idx, ide) ->    Idx;
-map_sym(W, H, Idx, ver) ->    idx(W, H, W-1-x(W, H, Idx), y(W, H, Idx));
-map_sym(W, H, Idx, hor) ->    idx(W, H, x(W, H, Idx), H-1-y(W, H, Idx));
-map_sym(W, H, Idx, pnt) ->    idx(W, H, W-1-x(W, H, Idx), H-1-y(W, H, Idx));
-map_sym(W, H, Idx, bck) ->    idx(W, H, y(W, H, Idx), x(W, H, Idx));
-map_sym(W, H, Idx, fwd) ->    idx(W, H, H-1-y(W, H, Idx), W-1-x(W, H, Idx));
-map_sym(W, H, Idx, rgt) ->    idx(W, H, W-1-y(W, H, Idx), x(W, H, Idx));
-map_sym(W, H, Idx, lft) ->    idx(W, H, y(W, H, Idx), W-1-x(W, H, Idx)).
+map_sym(_, _, Idx, a_ide) ->    Idx;
+map_sym(W, H, Idx, b_ver) ->    idx(W, H, W-1-x(W, H, Idx), y(W, H, Idx));
+map_sym(W, H, Idx, c_hor) ->    idx(W, H, x(W, H, Idx), H-1-y(W, H, Idx));
+map_sym(W, H, Idx, d_pnt) ->    idx(W, H, W-1-x(W, H, Idx), H-1-y(W, H, Idx));
+map_sym(W, H, Idx, e_bck) ->    idx(W, H, y(W, H, Idx), x(W, H, Idx));
+map_sym(W, H, Idx, f_fwd) ->    idx(W, H, H-1-y(W, H, Idx), W-1-x(W, H, Idx));
+map_sym(W, H, Idx, g_lft) ->    idx(W, H, y(W, H, Idx), W-1-x(W, H, Idx));
+map_sym(W, H, Idx, h_rgt) ->    idx(W, H, W-1-y(W, H, Idx), x(W, H, Idx)).
 
 unmap_move(W, H, Idx, S) when is_atom(S) ->    
     unmap_sym(W, H, Idx, S);
@@ -197,8 +197,8 @@ unmap_move(W, H, Idx, {S,TX,TY}) ->
     IdxX = idx(W, H, (x(W, H, IdxY)+W-TX) rem W, y(W, H, IdxY)),
     unmap_sym(W, H, IdxX, S).
 
-unmap_sym(W, H, Idx, rgt) ->  map_sym(W, H, Idx, lft);
-unmap_sym(W, H, Idx, lft) ->  map_sym(W, H, Idx, rgt);
+unmap_sym(W, H, Idx, h_rgt) ->  map_sym(W, H, Idx, g_lft);
+unmap_sym(W, H, Idx, g_lft) ->  map_sym(W, H, Idx, h_rgt);
 unmap_sym(W, H, Idx, Sym) ->  map_sym(W, H, Idx, Sym).
 
 %% ===================================================================
@@ -213,47 +213,47 @@ map_33_test_() ->
     W = 3,
     H = 3,
     Board = lists:seq($a,$a+W*H-1),
-    [ {"ide", ?_assertEqual("abcdefghi", map(W, H, Board, ide))}
-    , {"ver", ?_assertEqual("cbafedihg", map(W, H, Board, ver))}
-    , {"hor", ?_assertEqual("ghidefabc", map(W, H, Board, hor))}
-    , {"pnt", ?_assertEqual("ihgfedcba", map(W, H, Board, pnt))}
-    , {"bck", ?_assertEqual("adgbehcfi", map(W, H, Board, bck))}
-    , {"fwd", ?_assertEqual("ifchebgda", map(W, H, Board, fwd))}
-    , {"rgt", ?_assertEqual("gdahebifc", map(W, H, Board, rgt))}
-    , {"lft", ?_assertEqual("cfibehadg", map(W, H, Board, lft))}
-    , {"idex1", ?_assertEqual("cabfdeigh", map(W, H, Board, {ide,1,0}))}
-    , {"idex2", ?_assertEqual("bcaefdhig", map(W, H, Board, {ide,2,0}))}
-    , {"idey1", ?_assertEqual("ghiabcdef", map(W, H, Board, {ide,0,1}))}
-    , {"idey2", ?_assertEqual("defghiabc", map(W, H, Board, {ide,0,2}))}
-    , {"fwdx2", ?_assertEqual("fciebhdag", map(W, H, Board, {fwd,2,0}))}
-    , {"fwdy2", ?_assertEqual("hebgdaifc", map(W, H, Board, {fwd,0,2}))}
-    , {"rgtx1y1", ?_assertEqual("cifagdbhe", map(W, H, Board, {rgt,1,1}))}
-    , {"rgtx1y2", ?_assertEqual("bhecifagd", map(W, H, Board, {rgt,1,2}))}
+    [ {"a_ide",   ?_assertEqual("abcdefghi", map(W, H, Board, a_ide))}
+    , {"b_ver",   ?_assertEqual("cbafedihg", map(W, H, Board, b_ver))}
+    , {"c_hor",   ?_assertEqual("ghidefabc", map(W, H, Board, c_hor))}
+    , {"d_pnt",   ?_assertEqual("ihgfedcba", map(W, H, Board, d_pnt))}
+    , {"e_bck",   ?_assertEqual("adgbehcfi", map(W, H, Board, e_bck))}
+    , {"f_fwd",   ?_assertEqual("ifchebgda", map(W, H, Board, f_fwd))}
+    , {"h_rgt",   ?_assertEqual("gdahebifc", map(W, H, Board, h_rgt))}
+    , {"g_lft",   ?_assertEqual("cfibehadg", map(W, H, Board, g_lft))}
+    , {"a_idex1", ?_assertEqual("cabfdeigh", map(W, H, Board, {a_ide,1,0}))}
+    , {"a_idex2", ?_assertEqual("bcaefdhig", map(W, H, Board, {a_ide,2,0}))}
+    , {"a_idey1", ?_assertEqual("ghiabcdef", map(W, H, Board, {a_ide,0,1}))}
+    , {"a_idey2", ?_assertEqual("defghiabc", map(W, H, Board, {a_ide,0,2}))}
+    , {"f_fwdx2", ?_assertEqual("fciebhdag", map(W, H, Board, {f_fwd,2,0}))}
+    , {"f_fwdy2", ?_assertEqual("hebgdaifc", map(W, H, Board, {f_fwd,0,2}))}
+    , {"rgtx1y1", ?_assertEqual("cifagdbhe", map(W, H, Board, {h_rgt,1,1}))}
+    , {"rgtx1y2", ?_assertEqual("bhecifagd", map(W, H, Board, {h_rgt,1,2}))}
     ].
 
 map_move_33_test_() ->
     W = 3,
     H = 3,
     % Board = lists:seq($a,$a+W*H-1),
-    [ {"fwdx2y0", ?_assertEqual(7, map_move(W, H, 0, {fwd,2,0}))}
-    , {"fwdx0y2", ?_assertEqual(5, map_move(W, H, 0, {fwd,0,2}))}
-    , {"rgtx1y1", ?_assertEqual(3, map_move(W, H, 0, {rgt,1,1}))}
-    , {"rgtx1y2", ?_assertEqual(6, map_move(W, H, 0, {rgt,1,2}))}
+    [ {"f_fwdx2y0", ?_assertEqual(7, map_move(W, H, 0, {f_fwd,2,0}))}
+    , {"f_fwdx0y2", ?_assertEqual(5, map_move(W, H, 0, {f_fwd,0,2}))}
+    , {"h_rgtx1y1", ?_assertEqual(3, map_move(W, H, 0, {h_rgt,1,1}))}
+    , {"h_rgtx1y2", ?_assertEqual(6, map_move(W, H, 0, {h_rgt,1,2}))}
     ].
 
 map_44_test_() ->
     W = 4,
     H = 4,
     Board = lists:seq($a,$a+W*H-1),
-    [ {"ide", ?_assertEqual("abcdefghijklmnop", map(W, H, Board, ide))}
-    , {"ver", ?_assertEqual("dcbahgfelkjiponm", map(W, H, Board, ver))}
-    , {"hor", ?_assertEqual("mnopijklefghabcd", map(W, H, Board, hor))}
-    , {"pnt", ?_assertEqual("ponmlkjihgfedcba", map(W, H, Board, pnt))}
-    , {"bck", ?_assertEqual("aeimbfjncgkodhlp", map(W, H, Board, bck))}
-    , {"fwd", ?_assertEqual("plhdokgcnjfbmiea", map(W, H, Board, fwd))}
-    , {"lft", ?_assertEqual("dhlpcgkobfjnaeim", map(W, H, Board, lft))}
-    , {"rgt", ?_assertEqual("mieanjfbokgcplhd", map(W, H, Board, rgt))}
-    , {"idex1", ?_assertEqual("dabchefglijkpmno", map(W, H, Board, {ide,1,0}))}
+    [ {"a_ide",   ?_assertEqual("abcdefghijklmnop", map(W, H, Board, a_ide))}
+    , {"b_ver",   ?_assertEqual("dcbahgfelkjiponm", map(W, H, Board, b_ver))}
+    , {"c_hor",   ?_assertEqual("mnopijklefghabcd", map(W, H, Board, c_hor))}
+    , {"d_pnt",   ?_assertEqual("ponmlkjihgfedcba", map(W, H, Board, d_pnt))}
+    , {"e_bck",   ?_assertEqual("aeimbfjncgkodhlp", map(W, H, Board, e_bck))}
+    , {"f_fwd",   ?_assertEqual("plhdokgcnjfbmiea", map(W, H, Board, f_fwd))}
+    , {"g_lft",   ?_assertEqual("dhlpcgkobfjnaeim", map(W, H, Board, g_lft))}
+    , {"h_rgt",   ?_assertEqual("mieanjfbokgcplhd", map(W, H, Board, h_rgt))}
+    , {"a_idex1", ?_assertEqual("dabchefglijkpmno", map(W, H, Board, {a_ide,1,0}))}
     , {"rgtx1y1", ?_assertEqual("dplhamiebnjfcokg", map(W, H, Board, {rgt,1,1}))}
     ].
 
@@ -261,40 +261,40 @@ sym_44_test_() ->
     W = 4,
     H = 4,
     Board = egambo_tictac:shuffle(lists:seq($A,$A+W*H-1)),
-    [ {"ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, ide), ide))}
-    , {"ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, ver), ver))}
-    , {"hor", ?_assertEqual(Board, map(W, H, map(W, H, Board, hor), hor))}
-    , {"pnt", ?_assertEqual(Board, map(W, H, map(W, H, Board, pnt), pnt))}
-    , {"bck", ?_assertEqual(Board, map(W, H, map(W, H, Board, bck), bck))}
-    , {"fwd", ?_assertEqual(Board, map(W, H, map(W, H, Board, fwd), fwd))}
-    , {"lft", ?_assertEqual(Board, map(W, H, map(W, H, Board, lft), rgt))}
-    , {"rgt", ?_assertEqual(Board, map(W, H, map(W, H, Board, rgt), lft))}
+    [ {"a_ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, a_ide), a_ide))}
+    , {"b_ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, b_ver), b_ver))}
+    , {"c_hor", ?_assertEqual(Board, map(W, H, map(W, H, Board, c_hor), c_hor))}
+    , {"d_pnt", ?_assertEqual(Board, map(W, H, map(W, H, Board, d_pnt), d_pnt))}
+    , {"e_bck", ?_assertEqual(Board, map(W, H, map(W, H, Board, e_bck), e_bck))}
+    , {"f_fwd", ?_assertEqual(Board, map(W, H, map(W, H, Board, f_fwd), f_fwd))}
+    , {"g_lft", ?_assertEqual(Board, map(W, H, map(W, H, Board, g_lft), h_rgt))}
+    , {"h_rgt", ?_assertEqual(Board, map(W, H, map(W, H, Board, h_rgt), g_lft))}
     ].
 
 sym_44g_test_() ->
     W = 4,
     H = 4,
     Board = egambo_tictac:shuffle(lists:seq($A,$A+W-1)),
-    [ {"ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, ide), ide))}
-    , {"ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, ver), ver))}
+    [ {"a_ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, a_ide), a_ide))}
+    , {"b_ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, b_ver), b_ver))}
     ].
    
 sym_76_test_() ->
     W = 7,
     H = 6,
     Board = egambo_tictac:shuffle(lists:seq($a,$a+W*H-1)),
-    [ {"ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, ide), ide))}
-    , {"ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, ver), ver))}
-    , {"hor", ?_assertEqual(Board, map(W, H, map(W, H, Board, hor), hor))}
-    , {"pnt", ?_assertEqual(Board, map(W, H, map(W, H, Board, pnt), pnt))}
+    [ {"a_ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, a_ide), a_ide))}
+    , {"b_ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, b_ver), b_ver))}
+    , {"c_hor", ?_assertEqual(Board, map(W, H, map(W, H, Board, c_hor), c_hor))}
+    , {"d_pnt", ?_assertEqual(Board, map(W, H, map(W, H, Board, d_pnt), d_pnt))}
     ].
 
 sym_76g_test_() ->
     W = 7,
     H = 6,
     Board = egambo_tictac:shuffle(lists:seq($a,$a+W-1)),
-    [ {"ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, ide), ide))}
-    , {"ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, ver), ver))}
+    [ {"a_ide", ?_assertEqual(Board, map(W, H, map(W, H, Board, a_ide), a_ide))}
+    , {"b_ver", ?_assertEqual(Board, map(W, H, map(W, H, Board, b_ver), b_ver))}
     ].
 
 label(Term) -> lists:flatten(io_lib:format("~p",[Term])).
