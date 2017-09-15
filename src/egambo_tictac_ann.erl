@@ -341,7 +341,7 @@ ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-    Fun = fun(0) -> 0; ({N,S}) -> S/N end, 
+    Fun = fun(0) -> 0; ({0,_}) -> 0.001;  ({N,S}) -> S/N end, 
     lists:map(Fun, AggregatedOutputVector). 
 
 % ann_norm_sample_output(AggregatedOutputVector, _QOS) ->

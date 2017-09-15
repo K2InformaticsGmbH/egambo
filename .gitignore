@@ -27,3 +27,7 @@ priv/public
 logs
 log/
 *.log
+
+# Private data store
+data
+
