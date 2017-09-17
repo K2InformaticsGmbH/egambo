@@ -122,13 +122,13 @@
         , ann_norm_sample_output/2
         ]).
 
-% egambo_tictac_ann:resume(<<"tic_tac_toe_443">>).
+% egambo_tictac_ann:resume(<<"tic_tac_toe">>).
 % egambo_tictac_ann:start_learning(<<"tic_tac_toe_443">>).
 % egambo_tictac_ann:train(<<"tic_tac_toe_443">>, 20    , 0.1   , 0.10, 0.0  , 1     , 150).
 % egambo_tictac_ann:train(GameTypeId           , Epochs, ResErr, Rate, QosMin, QosMax, BatchSize) 
 % egambo_tictac_ann:save(<<"tic_tac_toe_443">> , <<"V0.1">>,<<"First Attempt for Learning">>). 
 % egambo_tictac_ann:stop(<<"tic_tac_toe_443">>).
-% egambo_tictac_ann:predict(<<"tic_tac_toe_443">>,"XXO  OO   XO   X").
+% egambo_tictac_ann:predict(<<"tic_tac_toe">>,[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]).
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
@@ -188,8 +188,8 @@ test(GameTypeId, QosMin, QosMax) ->
             gen_server:call(?BOT_GID(?MODULE, GameTypeId), {test, TestSet}, infinity)
     end.
 
-predict(GameTypeId, NormBoard) ->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {predict, NormBoard}).
+predict(GameTypeId, Input) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {predict, Input}).
 
 explore(GameTypeId) ->
     gen_server:call(?BOT_GID(?MODULE, GameTypeId), {explore}).
@@ -341,8 +341,13 @@ ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-    Fun = fun(0) -> 0; ({0,_}) -> 0.001;  ({N,S}) -> S/N end, 
+    Fun = fun(0) -> 0; ({0,_}) -> 0;  ({N,S}) -> S/N end,   % free floating for occupied and unsampled
     lists:map(Fun, AggregatedOutputVector). 
+
+% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
+%     Fun = fun(0) -> 0; ({0,_}) -> 0.001;  ({N,S}) -> S/N end,     % free floating for occupied
+%     lists:map(Fun, AggregatedOutputVector). 
+
 
 % ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
 %     Fac = case norm(AggregatedOutputVector) of
@@ -474,11 +479,8 @@ handle_call(finish, _From, #state{network=Network} = State) ->
     {reply, ok, State#state{network=undefined}};
 handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
-handle_call({predict, NormBoard}, _From, #state{network=Network, status=playing} = State) ->
-    NormIn = ann_norm_input(NormBoard),
-    % ?Info("Network Input ~p ~p ",[Network, NormIn]),
-    Out = ann:predict(Network, NormIn),
-    % ?Info("Network Output ~p ~p ",[Network, Out]),
+handle_call({predict, Input}, _From, #state{network=Network, status=playing} = State) ->
+    Out = ann:predict(Network, Input),
     {reply, Out, State};
 handle_call({predict, _}, _From, State) ->
     {reply, ?ANN_NOT_PLAYING, State};
@@ -547,37 +549,33 @@ send_to_engine(GameId, Message) ->
 
 -spec play_bot_ann(binary(), integer(), integer(), boolean(), boolean(), [egAlias()], [egAlias()], pid(), number()) -> egBotMove().
 play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, [Player|_]=NAliases, Network, Flatten) ->
-    ?Info("play_bot_ann Board, NAliases ~p ~p", [Board, NAliases]),
+    % ?Info("play_bot_ann Board, NAliases ~p ~p", [Board, NAliases]),
     ABoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases),
-    ?Info("play_bot_ann ABoard after alias transform ~p ", [ABoard]),
+    % ?Info("play_bot_ann ABoard after alias transform ~p ", [ABoard]),
     {NormBoard, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
-    ?Info("play_bot_ann normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
+    % ?Info("play_bot_ann normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
     NormIn = ann_norm_input(NormBoard),
-    ?Info("play_bot_ann Network, NormIn ~p ~p ", [Network, NormIn]),
+    % ?Info("play_bot_ann Network, NormIn ~p ~p ", [Network, NormIn]),
     Output = ann:predict(Network, NormIn),
-    ?Info("play_bot_ann network Output ~p",[Output]),    
+    % ?Info("play_bot_ann network Output ~p",[Output]),    
     NormIdx = pick_output(Output, NormBoard, Flatten),      % 0-based index for predicted move
-    NewIdx = egambo_tictac_sym:denorm_move(Width, Height, NormIdx, Sym),    
-    ?Info("play_bot_ann NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
+    NewIdx = egambo_tictac_sym:unmap_move(Width, Height, NormIdx, Sym),    
+    % ?Info("play_bot_ann NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
     {ok, Idx, NewBoard} = egambo_tictac:put(Gravity, Board, Width, NewIdx, Player),
-    ?Info("play_bot_ann Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
+    % ?Info("play_bot_ann Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
     {ok, Idx, NewBoard}.
 
--spec pick_output(list(), binary(), number()) -> integer().
-pick_output(Output, NormBoard, 0) ->
-    Valid = fun({_G, I}) -> (binary:part(NormBoard,I,1) == <<?AVAILABLE>>) end,
-    {_MaxGain, ImaxGain} = hd(lists:reverse(lists:sort(lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1)))))),
-    ImaxGain;     % 0-based
+-spec pick_output(list(), list(), number()) -> integer().
 pick_output(Output, NormBoard, Flatten) ->
-    Valid = fun({_G, I}) -> (binary:part(NormBoard,I,1) == <<?AVAILABLE>>) end,
-    SortedGainList = lists:sort(lists:filter(Valid, lists:zip(Output, lists:seq(0, length(Output)-1)))),
+    Valid = fun({_G, I}) -> (lists:nth(I, NormBoard) == ?AVAILABLE) end,
+    SortedGainList = lists:sort(lists:filter(Valid, lists:zip(Output, lists:seq(1, length(Output))))),
     {MaxGain, _} = lists:last(SortedGainList),
     Pred = if 
         MaxGain =< 0.0 ->   fun({G,_}) -> (G<MaxGain-1.0e-7) end; 
-        true ->             fun({G,_}) -> (G<MaxGain*(1.0-Flatten)) end
+        true ->             fun({G,_}) -> (G<MaxGain*(1.0-Flatten)-1.0e-7) end
     end,
     ShortList = lists:dropwhile(Pred, SortedGainList),
-    element(2, lists:nth(rand:uniform(length(ShortList)), ShortList)).
+    element(2, lists:nth(rand:uniform(length(ShortList)), ShortList)) -1.   % 0-based index to one of the top gains
 
 % min_max(L) -> 
 %     MinMax = fun(E, {Min,Max}) ->

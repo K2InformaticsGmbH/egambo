@@ -344,7 +344,8 @@ connect(InPidWeight, OutPid) ->
   OutPid ! {connect_to_input, InPidWeight},
   {InPid, _W} = InPidWeight,
   % io:format("connecting ~p to ~p weight ~p~n", [InPid, OutPid, _W]),
-  InPid ! {connect_to_output, OutPid}.
+  InPid ! {connect_to_output, OutPid},
+  ok.
 
 full_mesh_connect(_, []) -> ok;
 full_mesh_connect([N1, N2], W) -> 
