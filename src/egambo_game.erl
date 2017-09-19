@@ -9,7 +9,10 @@
                             ,{purge_delay, 430000}      %% 430000 = 5 Days - 2000 sec
                             ]).
 
--define(MAX_BATCH_COUNT, 10000).
+-define(MAX_BATCH_COUNT, 100000).
+-define(CREATE_BATCH_COUNT, 100).
+-define(CREATE_BATCH_BUSY_WAIT, 1000).
+-define(BOT_QUEUE_BUSY_LENGTH, 100).
 
 -define(BAD_BATCH_START_REQUEST, {error, <<"Bad batch start command or batch count exceeded">>}).
 -define(NO_SUCH_GAME_TYPE, {error, <<"Game type does not exist">>}).
@@ -224,6 +227,8 @@
         , play/3            % play one move: GameId, Cell|Command, AccountId            (in the name of the account given)
         , play/2            % play one move: GameId, Cell|Command                       (in the name of the next player)
         , play_bot/5        % trigger a bot to play one move (async)
+        , bots_are_busy/3
+        , bot_is_busy/2
         ]).
 
 -safe([create, start, cancel, accept, play, result, resume, moves, time]).
@@ -242,9 +247,49 @@ create(_, _, _) -> ?BAD_ACCOUNT.
 
 -spec create(egGameTypeId(), integer(), egAccountId(), egAccountId()) -> [egGameId() | egGameError()] | egGameError().
 create(GameType, Cnt, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc), is_integer(Cnt), Cnt > 0, Cnt =< ?MAX_BATCH_COUNT ->
-    [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, Cnt)];
+    create_games(GameType, Cnt, YourAcc, MyAcc, 0);
 create(_, _, YourAcc, MyAcc) when is_integer(MyAcc), is_integer(YourAcc) ->  ?BAD_BATCH_START_REQUEST;
 create(_, _, _, _) -> ?BAD_ACCOUNT.
+
+create_games(_GameType, Cnt, _YourAcc, _MyAcc, Cnt) -> Cnt;
+create_games(GameType, Cnt, YourAcc, MyAcc, Done) ->
+    BatchDone = case bots_are_busy(GameType, YourAcc, MyAcc) of
+        true -> 
+            timer:sleep(?CREATE_BATCH_BUSY_WAIT),
+            0; % nothng done this round
+        false ->
+            case Cnt-Done of
+                N when N > ?CREATE_BATCH_COUNT -> 
+                    ?Info("Creating ~p games ~s ~p ~p done ~p",[?CREATE_BATCH_COUNT, GameType, YourAcc, MyAcc, Done]),
+                    [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, ?CREATE_BATCH_COUNT)],
+                    ?CREATE_BATCH_COUNT;
+                _ -> 
+                    ?Info("Creating ~p games ~s ~p ~p done ~p",[Cnt-Done, GameType, YourAcc, MyAcc, Done]),
+                    [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, Cnt-Done)],
+                    Cnt-Done
+            end
+    end,
+    create_games(GameType, Cnt, YourAcc, MyAcc, Done + BatchDone).
+
+bots_are_busy(GameType, YourAcc, MyAcc) ->
+    case {read_bot(YourAcc), read_bot(MyAcc)} of
+        {undefined, _} -> false;
+        {_, undefined} -> false;
+        {YourBot, MyBot} ->
+            case bot_is_busy(GameType, YourBot) of
+                true ->     true;
+                false ->    bot_is_busy(GameType, MyBot)
+            end
+    end.
+
+bot_is_busy(GameType, Bot) ->
+    case global:whereis_name(?BOT_GID(Bot, GameType)) of
+        undefined ->    false;
+        Pid ->
+            QueueLen = erlang:process_info(Pid, messages_queue_len),
+            ?Info("Bot ~p has queue length ~p",[QueueLen]),
+            (QueueLen > ?BOT_QUEUE_BUSY_LENGTH)
+    end. 
 
 -spec start(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
 start(GameType, MyAcc) when is_integer(MyAcc) ->
