@@ -292,7 +292,7 @@ bot_is_busy(GameType, Bot) ->
         Pid ->
             QueueLen = element(2,erlang:process_info(Pid, message_queue_len)),
             case (QueueLen > ?BOT_QUEUE_BUSY_LENGTH) of
-                true ->     ?Info("Bot ~p has queue length ~p",[Bot, QueueLen]),
+                true ->     % ?Info("Bot ~p has queue length ~p",[Bot, QueueLen]),
                             true;
                 false ->    false
             end

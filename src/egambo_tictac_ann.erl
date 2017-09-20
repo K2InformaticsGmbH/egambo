@@ -18,6 +18,7 @@
 -define(ANN_ACTIVATION, tanh1).     % tanh1, tanh, relu or sigmoid
 -define(ANN_OUTPUT_TARGET, 1.0).    % Output swing of 'most important move' (should correlate to point of max. nonlinearity of AF)
 -define(ANN_OUTPUT_MTE, 4.0).       % Optimize for sensitivity for move 4 before the end of the game (4 more half-moves to end)
+-define(ANN_OUTPUT_UNSAMPLED, 0.001).       % Value emitted as output for unsampled move in Export 
 
 
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
@@ -341,12 +342,8 @@ ann_norm_single_input($$) -> -0.5;
 ann_norm_single_input(I) -> I/256.0.
 
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-    Fun = fun(0) -> 0; ({0,_}) -> 0;  ({N,S}) -> S/N end,   % free floating for occupied and unsampled
+    Fun = fun(0) -> 0; ({0,_}) -> ?ANN_OUTPUT_UNSAMPLED;  ({N,S}) -> S/N end,     % free floating for occupied
     lists:map(Fun, AggregatedOutputVector). 
-
-% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-%     Fun = fun(0) -> 0; ({0,_}) -> 0.001;  ({N,S}) -> S/N end,     % free floating for occupied
-%     lists:map(Fun, AggregatedOutputVector). 
 
 
 % ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
