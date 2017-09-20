@@ -12,6 +12,7 @@
 -define(MAX_BATCH_COUNT, 100000).
 -define(CREATE_BATCH_COUNT, 100).
 -define(CREATE_BATCH_BUSY_WAIT, 1000).
+-define(CREATE_BATCH_ALWAYS_WAIT, 500).
 -define(BOT_QUEUE_BUSY_LENGTH, 100).
 
 -define(BAD_BATCH_START_REQUEST, {error, <<"Bad batch start command or batch count exceeded">>}).
@@ -229,6 +230,7 @@
         , play_bot/5        % trigger a bot to play one move (async)
         , bots_are_busy/3
         , bot_is_busy/2
+        , read_bot/1
         ]).
 
 -safe([create, start, cancel, accept, play, result, resume, moves, time]).
@@ -260,12 +262,14 @@ create_games(GameType, Cnt, YourAcc, MyAcc, Done) ->
         false ->
             case Cnt-Done of
                 N when N > ?CREATE_BATCH_COUNT -> 
-                    ?Info("Creating ~p games ~s ~p ~p done ~p",[?CREATE_BATCH_COUNT, GameType, YourAcc, MyAcc, Done]),
+                    ?Info("Creating ~p games ~s ~p ~p done ~p + ~p",[?CREATE_BATCH_COUNT, GameType, YourAcc, MyAcc, Done, ?CREATE_BATCH_COUNT]),
                     [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, ?CREATE_BATCH_COUNT)],
+                    timer:sleep(?CREATE_BATCH_ALWAYS_WAIT),
                     ?CREATE_BATCH_COUNT;
                 _ -> 
-                    ?Info("Creating ~p games ~s ~p ~p done ~p",[Cnt-Done, GameType, YourAcc, MyAcc, Done]),
+                    ?Info("Creating ~p games ~s ~p ~p done ~p + ~p",[Cnt-Done, GameType, YourAcc, MyAcc, Done, Cnt-Done]),
                     [gen_server:call(?MODULE, {create, GameType, YourAcc, MyAcc}) || _ <- lists:seq(1, Cnt-Done)],
+                    timer:sleep(?CREATE_BATCH_ALWAYS_WAIT),
                     Cnt-Done
             end
     end,
@@ -283,12 +287,15 @@ bots_are_busy(GameType, YourAcc, MyAcc) ->
     end.
 
 bot_is_busy(GameType, Bot) ->
-    case global:whereis_name(?BOT_GID(Bot, GameType)) of
+    case global:whereis_name(?BOT_ID(Bot, GameType)) of
         undefined ->    false;
         Pid ->
-            QueueLen = erlang:process_info(Pid, messages_queue_len),
-            ?Info("Bot ~p has queue length ~p",[QueueLen]),
-            (QueueLen > ?BOT_QUEUE_BUSY_LENGTH)
+            QueueLen = element(2,erlang:process_info(Pid, message_queue_len)),
+            case (QueueLen > ?BOT_QUEUE_BUSY_LENGTH) of
+                true ->     ?Info("Bot ~p has queue length ~p",[Bot, QueueLen]),
+                            true;
+                false ->    false
+            end
     end. 
 
 -spec start(egGameTypeId(), egAccountId()) -> egGameId() | egGameError().
@@ -336,7 +343,7 @@ resume_bots(_GameTypeId, []) -> ok;
 resume_bots(GameTypeId, [undefined|Bots]) ->
     resume_bots(GameTypeId, Bots);
 resume_bots(GameTypeId, [Bot|Bots]) ->
-    case global:whereis_name(?BOT_GID(Bot, GameTypeId)) of
+    case global:whereis_name(?BOT_ID(Bot, GameTypeId)) of
         undefined ->
             case Bot:resume(GameTypeId) of
                 ok ->       resume_bots(GameTypeId, Bots);
