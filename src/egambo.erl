@@ -6,7 +6,8 @@
     start/0,
     stop/0,
     get_routes/0,
-    start_tpcjson_listener/0
+    start_tpcjson_listener/0,
+    priv_dir/0
 ]).
 
 start() ->
