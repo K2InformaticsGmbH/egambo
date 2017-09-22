@@ -31,3 +31,5 @@ log/
 # Private data store
 data
 
+*.swp
+.rebar/
