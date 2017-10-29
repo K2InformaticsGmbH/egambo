@@ -3,7 +3,7 @@
 -include("egambo_tictac.hrl").  % import tictac game definitions 
 
 -behavior(gen_server).          % callbacks provided by (bot) players
-%-behavior(egambo_gen_player).   % callbacks provided by (bot) players
+%-behavior(egambo_gen_player).  % callbacks provided by (bot) players
 
 -define(ANN_MODEL, egTicTacAnnModel).       % Model Table Name (Layers, Weights)
 -define(ANN_TRAIN, egTicTacAnnTrain).       % Training Table Name
@@ -20,8 +20,8 @@
 -define(ANN_OUTPUT_MTE, 4.0).       % Optimize for sensitivity for move 4 before the end of the game (4 more half-moves to end)
 -define(ANN_OUTPUT_UNSAMPLED, 0.001).       % Value emitted as output for unsampled move in Export
 -define(ANN_HASH_BASE, 4294967296). 
--define(ANN_QLEARN_ALFA, 0.1). 
--define(ANN_QLEARN_GAMMA, 0.5). 
+-define(ANN_QLEARN_ALFA, 0.9). 
+-define(ANN_QLEARN_GAMMA, -0.9).    % Next move (action) is from opponent. Reward Q(s,a) needs to be negated 
 
 
 -define(ANN_NO_TEST_SAMPLES, {error, <<"No test samples found">>}).
@@ -110,9 +110,7 @@
         , save/1
         , save/2
         , save/3
-        , ann_sample/7
         , ann_samples/7
-        , ann_sample/9
         , ann_samples/9
         , read_samples/6
         , predict/2
@@ -126,6 +124,7 @@
 
 -export([ ann_norm_input/1
         , ann_norm_sample_output/2
+        , qlearn_max/1
         ]).
 
 % egambo_tictac_ann:resume(<<"tic_tac_toe">>).
@@ -138,7 +137,7 @@
 
 -define(BOT_IS_BUSY, {error, bot_is_busy}).
 
--safe([state, start, stop, resume, save, start_learning, start_playing, ann_sample, norm, ann_samples, train, test, ann_norm_input, ann_norm_sample_output, explore, flatten]).
+-safe([state, start, stop, resume, save, start_learning, start_playing, norm, ann_samples, train, test, ann_norm_input, ann_norm_sample_output, explore, flatten, predict]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -245,142 +244,133 @@ match_val(T) when is_tuple(T) -> {const,T};
 match_val(V) -> V.
 
 
-%% Sample one random move out of a game into the training table
-%% and aggregate into the training table using an input hash
-ann_sample(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
-    ann_sample(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores, ?ANN_QLEARN_ALFA, ?ANN_QLEARN_GAMMA).
-
-ann_sample(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores, Alfa, Gamma) ->
-    #egGameType{params=Params} = egambo_game:read_type(GameTypeId),
-    [Input, _Players, Move, [Score|_], MTE] = egambo_tictac:sample(Space, Ialiases, Moves, Naliases, Nscores),
-    ann_sample_single(GameTypeId, Input, Move, Score, MTE, Ialiases, Params, Alfa, Gamma).
-
-%% Sample all moves of a game into the training table (ok to do as long as we have enough ramdomness)
-%% and aggregate into the training table using an input hash
+%% Sample all moves of a game and aggregate Q-learned winning chances into the training table
+%% Key in the training table is a hash of the (alias normalized and symmetry normalized) board atate before the move (action) 
+%% This follows an adapted the Q-learnng idea where the winning estimate of the current {position, action}
+%% is calculated as the negated (maximum) winning chance of the opponent in that position  
 ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores) ->
     ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores, ?ANN_QLEARN_ALFA, ?ANN_QLEARN_GAMMA).
 
 ann_samples(GameTypeId, _GameId, Space, Ialiases, Moves, Naliases, Nscores, Alfa, Gamma) ->
     #egGameType{params=Params} = egambo_game:read_type(GameTypeId),
-    [ ann_sample_single(GameTypeId, Board, Move, Score, MTE, Ialiases, Params, Alfa, Gamma) || 
-        [Board, _Players, Move, [Score|_], MTE] <- egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores)
-    ].
+    ann_samples_game(GameTypeId, egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores), Params, Alfa, Gamma, undefined,[]).
+
+%% Scan the moves of a game from last to first and update an aggregated Q-learning table which can also be used to train an ANN (for interpolation)
+ann_samples_game(_, [], _, _, _, _, Acc) -> lists:reverse(Acc);
+ann_samples_game(GameTypeId, [Sample|Samples], Params, Alfa, Gamma, LastTrainingRec, Acc) ->
+    {Hash, Output, TrainingRec} = ann_sample_single(GameTypeId, Sample, Params, Alfa, Gamma, LastTrainingRec),
+    ann_samples_game(GameTypeId, Samples, Params, Alfa, Gamma, TrainingRec, [{Hash, Output}|Acc]).
 
 %% Format a single (already Alias-normalized) sample for ann use (Board size input vector, Board size / Board Width output vector)
 %% and aggregate into the training table using an input hash
-ann_sample_single(GameTypeId, Board, Move, Score, MTE, Ialiases, Params, Alfa, Gamma) ->
+%% Score is the final score of the game as seen by the current player
+%% LastTrainingRec is the updated training data for the next move (played after the current one)
+%% LastTrainingRec is containing all Q(Board,Moves) as seen in the perspective of the opponent
+%% The Q-learning back-propagation needs to negate this Q for the current player
+%% The estimate for the quality of this move hence is the negated current Q of the LastTrainingRec  
+ann_sample_single(GameTypeId, [Board, _Players, Move, [Score|_], MTE], Params, Alfa, Gamma, LastTrainingRec) ->
     #{width:=Width, height:=Height, gravity:=Gravity, periodic:=Periodic} = Params,
     % ?Info("ann_sample_single Board and Move ~p ~p", [Board, Move]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, Board),
     % ?Info("ann_sample_single Input and Sym ~p ~p", [Input, Sym]),
-    Gain = ann_sample_gain(Width, Height, Score, MTE),
-    {Output, IMove, OMove, Olen} = case Gravity of
+    Q = case MTE of
+        0 -> Score;
+        _ -> 0
+    end,
+    {Output, OMove, Olen} = case Gravity of
         false ->
             OL = Width*Height,
             OMove1 = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,              % one based index of move
             F = fun(I) -> 
                 Inp=lists:nth(I, Input), 
                 if 
-                    I==OMove1 -> {1, Gain};   % move taken in sample
+                    I==OMove1 -> {1, Q};      % move taken in sample
                     Inp==32 ->   {0, 0};      % alternative legal move, not taken here
                     true ->      0            % illegal move (occupied)
                 end 
             end, 
-            {lists:map(F, lists:seq(1, OL)), OMove1, OMove1, OL};
+            {lists:map(F, lists:seq(1, OL)), OMove1, OL};
         true ->
             OL = Width,
-            IMove1 = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,              % one based index to Input
             OMove1 = egambo_tictac_sym:map_move(Width, Height, Move rem Width, Sym) + 1,    % one based index to Output
             F = fun(I) -> 
                 Inp=lists:nth(I, Input), 
                 if 
-                    I==OMove1 -> {1, Gain};   % move taken in sample
+                    I==OMove1 -> {1, Q};      % move taken in sample
                     Inp==32 ->   {0, 0};      % alternative legal move, not taken here
                     true ->      0            % illegal move (occupied)
                 end 
             end, 
-            {lists:map(F, lists:seq(1, OL)), IMove1, OMove1, OL}
+            {lists:map(F, lists:seq(1, OL)), OMove1, OL}
     end,
-    % ?Info("ann_sample_single Output ~p InputIdx ~p OutputIdx ~p", [Output, IMove, OMove]),
+    % ?Info("ann_sample_single Output ~p OutputIdx ~p", [Output, OMove]),
     Hash = erlang:phash2(Input, ?ANN_HASH_BASE),
-    Key = {GameTypeId, Hash},
-    case imem_meta:read(?ANN_TRAIN, Key) of
-        [] ->   
-            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
-                                            , qos=1, input=Input, output=Output}),
-            {Hash, Output};
-        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] when MTE==0 ->
-            % Immediate win or tie, cannot expect a Q there
-            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
-                                            , qos=N+1, input=Input
-                                            , output=vector_add(OldOut, Output)}),
-            {Hash, Output};
-        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
-            ChildInput = apply_move1(Input, IMove, hd(Ialiases)),
-            ChildHash = erlang:phash2(ChildInput, ?ANN_HASH_BASE),
-            ChildKey = {GameTypeId, ChildHash},
-            case imem_meta:read(?ANN_TRAIN, ChildKey) of
-                [#egTicTacAnnSample{input=ChildInput, output=ChildOut}] ->
-                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
-                                                    , qos=N+1, input=Input
-                                                    , output=qlearn_add(OldOut, Output, ChildOut, OMove, Olen, Alfa, Gamma)}),
-                    {Hash, Output};
-                _ ->
-                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=Key
-                                                    , qos=N+1, input=Input
-                                                    , output=vector_add(OldOut, Output)}),
-                    {Hash, Output}
+    case ann_sample_training(Input, Output, MTE, OMove, Olen, Alfa, Gamma, {GameTypeId, Hash}, LastTrainingRec) of
+        hash_collision ->       % Hash is already used for another board
+            case ann_sample_training(Input, Output, MTE, OMove, Olen, Alfa, Gamma, {GameTypeId, -Hash}, LastTrainingRec) of    
+                hash_collision ->   % Hash is already used for another board
+                    ?Info("Unrecoverable input hash collision for Hash=~p Input=~p, sample ignored", [Hash, Input]),
+                    {0, Output, undefined};
+                AltTrainingRec ->
+                    imem_meta:write(?ANN_TRAIN, AltTrainingRec),
+                    {-Hash, Output, AltTrainingRec}
             end;
-        _ ->
-            % hash collision detected, try to escape to negative hash
-            AltKey = {GameTypeId, -Hash},
-            case imem_meta:read(?ANN_TRAIN, AltKey) of
-                [] ->   
-                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey
-                                                    , qos=1, input=Input, output=Output}),
-                    {-Hash, Output};
-                [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] when MTE==0 ->
-                    imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey
-                                                , qos=N+1, input=Input
-                                                , output=vector_add(OldOut, Output)}),
-                    {-Hash, Output};
-                [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
-                    ChildInput = apply_move1(Input, IMove, hd(Ialiases)),
-                    ChildHash = erlang:phash2(ChildInput, ?ANN_HASH_BASE),
-                    ChildKey = {GameTypeId, ChildHash},
-                    case imem_meta:read(?ANN_TRAIN, ChildKey) of
-                        [#egTicTacAnnSample{input=ChildInput, output=ChildOut}] ->
-                            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey
-                                                            , qos=N+1, input=Input
-                                                            , output=qlearn_add(OldOut, Output, ChildOut, OMove, Olen, Alfa, Gamma)}),
-                            {-Hash, Output};
-                        _ ->
-                            imem_meta:write(?ANN_TRAIN, #egTicTacAnnSample{skey=AltKey
-                                                            , qos=N+1, input=Input
-                                                            , output=vector_add(OldOut, Output)}),
-                            {-Hash, Output}
-                    end;
-                [#egTicTacAnnSample{input=CollInput}] ->
-                    ?Info("Unrecoverable input hash collision OldInput= ~p  NewInput=~p ignored",[CollInput, Input]),
-                    {0, Output}
-            end
+        TrainingRec ->
+            imem_meta:write(?ANN_TRAIN, TrainingRec),
+            {Hash, Output, TrainingRec}
     end.
 
-apply_move1(Input, 1, Alias) ->
-    [Alias|tl(Input)];
-apply_move1(Input, Move1, Alias) -> 
-    {H,T} = lists:split(Move1-1, Input),
-    H ++ [Alias|tl(T)]. 
+ann_sample_training(Input, Output, 0, _OMove, _Olen, _Alfa, _Gamma, Key, undefined) ->
+    case imem_meta:read(?ANN_TRAIN, Key) of
+        [] ->
+            % TrainingRec does not exist yet, create it   
+            #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=Output};
+        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
+            % Immediate win or tie, cannot expect next Q there. Record the observed Score by adding to the accu
+            #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)};
+        _ ->
+            hash_collision
+    end;
+ann_sample_training(Input, Output, _MTE, _OMove, _Olen, _Alfa, _Gamma, Key, undefined)  ->
+    case imem_meta:read(?ANN_TRAIN, Key) of
+        [] ->
+            % TrainingRec does not exist yet, create it   
+            #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=Output};
+        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
+            % Not the last move but cannot Q-learn from next action (record just processed is lost due to hash collision)
+            #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=vector_add(OldOut, Output)}
+    end;
+ann_sample_training(Input, Output, MTE, OMove, Olen, Alfa, Gamma, Key, LastTrainingRec) when MTE>0 ->
+    case imem_meta:read(?ANN_TRAIN, Key) of
+        [] ->
+            % TrainingRec does not exist yet, create it   
+            #egTicTacAnnSample{output=NextOut} = LastTrainingRec,
+            % ?Info("LastTrainingRec ~p",[LastTrainingRec]),
+            #egTicTacAnnSample{skey=Key, qos=1, input=Input, output=qlearn_add(Output, Output, NextOut, OMove, Olen, Alfa, Gamma)};
+        [#egTicTacAnnSample{qos=N, input=Input, output=OldOut}] ->
+            % Not the last move, Q-learn from next action (just processed)
+            #egTicTacAnnSample{output=NextOut} = LastTrainingRec,
+            % ?Info("LastTrainingRec ~p",[LastTrainingRec]),
+            #egTicTacAnnSample{skey=Key, qos=N+1, input=Input, output=qlearn_add(OldOut, Output, NextOut, OMove, Olen, Alfa, Gamma)};
+        _ ->
+            hash_collision
+    end.
+
+% apply_move1(Input, 1, Alias) ->
+%     [Alias|tl(Input)];
+% apply_move1(Input, Move1, Alias) -> 
+%     {H,T} = lists:split(Move1-1, Input),
+%     H ++ [Alias|tl(T)]. 
 
 
 %% Output (gain) of a single sample output item depending on the MTE (moves to end)
 %% An MTE of 0 (a win) is placed somewhat above the higest sensitivity of the AF
 %% An MTE of 1 (a loose/tie) is placed somewhat below higest sensitivity in the negative
 %% A (roughly) symmetric AF around the origin is assumed here
-ann_sample_gain(Width, Height, Score, MTE) when Score >= 0.0 ->
-    ?ANN_OUTPUT_TARGET * Score * (Width*Height-MTE) / (Width*Height-?ANN_OUTPUT_MTE);
-ann_sample_gain(Width, Height, Score, MTE) ->
-    ?ANN_OUTPUT_TARGET * Score * (Width*Height-MTE+1) / (Width*Height-?ANN_OUTPUT_MTE).
+% ann_sample_gain(Width, Height, Score, MTE) when Score >= 0.0 ->
+%     ?ANN_OUTPUT_TARGET * Score * (Width*Height-MTE) / (Width*Height-?ANN_OUTPUT_MTE);
+% ann_sample_gain(Width, Height, Score, MTE) ->
+%     ?ANN_OUTPUT_TARGET * Score * (Width*Height-MTE+1) / (Width*Height-?ANN_OUTPUT_MTE).
 
 vector_add(OldOut, Output) ->
     [vector_add_one(Old, Out) || {Old, Out} <- lists:zip(OldOut, Output)].
@@ -388,22 +378,35 @@ vector_add(OldOut, Output) ->
 vector_add_one(0, 0) -> 0;
 vector_add_one({AccN,AccQ}, {N,Q}) -> {AccN+N, AccQ+Q}. 
 
-qlearn_add(OldOut, Output, ChildOutput, OMove, Olen, Alfa, Gamma) ->
-    [qlearn_add_one(Old, Out, Pos, ChildOutput, OMove, Alfa, Gamma) || {Old, Out, Pos} <- lists:zip3(OldOut, Output, lists:seq(1, Olen))].
+qlearn_add(OldOut, Output, NextOut, OMove, Olen, Alfa, Gamma) ->
+    [qlearn_add_one(Old, Out, Pos, NextOut, OMove, Alfa, Gamma) || {Old, Out, Pos} <- lists:zip3(OldOut, Output, lists:seq(1, Olen))].
 
-qlearn_add_one({AccN,AccQ}, {N,Q}, OMove, ChildOutput, OMove, Alfa, Gamma) ->
-    {CN,CQ} = qlearn_max(ChildOutput),
+
+%% Add one sample to the Q-learning accumulator (single output vector position)
+%% accumulated Q:                   {AccN,AccQ}={Number of accumulated samples so far, sum of quality for this action}
+%% immediate reward:                {N,Q}       (normally {1,0} for non-final moves, {0,0} for unsampled actions)
+%% invalid moves (actions):         0 + 0 -> 0
+qlearn_add_one(0, 0, _, _, _, _, _) -> 0;                           % invalid moves 
+qlearn_add_one({AccN,AccQ}, {0,_}, _, _, _, _, _) -> {AccN,AccQ};   % unsampled actions
+qlearn_add_one({0,0}, {N,Q}, OMove, NextOut, OMove, Alfa, Gamma) ->
+    % Q-learn with immediate reward (Q=0 for TicTacChallenge)
+    {CN,CQ} = qlearn_max(NextOut),
+    {N, Alfa*(Q + Gamma*N*CQ/CN)};
+qlearn_add_one({AccN,AccQ}, {N,Q}, OMove, NextOut, OMove, Alfa, Gamma) ->
+    % Q-learn with immediate reward (Q=0 for TicTacChallenge)
+    {CN,CQ} = qlearn_max(NextOut),
     AccNN = AccN+N,
-    AccQN = AccNN*AccQ/AccNN,
-    {AccNN, AccQN + Alfa*(Q*AccNN/N + Gamma*CQ*AccNN/CN - AccQN)};
-qlearn_add_one(Old, Out, _, _, _, _, _) -> vector_add_one(Old, Out).
+    AccQN = AccNN*AccQ/AccN,
+    {AccNN, AccQN + Alfa*(Q*AccNN/N + Gamma*CQ*AccNN/CN - AccQN)}.
 
-qlearn_max(ChildOutput) -> qlearn_max(ChildOutput,{0,0},0).
+qlearn_max(Output) -> qlearn_max(Output,0,-1.0e100).
 
 qlearn_max([], Max, _) -> Max;  
-qlearn_max([{0,_}|ChildOutput], Max, MaxQ) -> qlearn_max(ChildOutput, Max, MaxQ);  
-qlearn_max([{N,Q}|ChildOutput], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(ChildOutput, {N,Q}, Q/N);
-qlearn_max([{N,Q}|ChildOutput], Max, MaxQ) when Q/N>MaxQ -> qlearn_max(ChildOutput, Max, MaxQ).
+qlearn_max([0|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);     % invalid action
+qlearn_max([{0,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ); % unsampled action
+qlearn_max([{N,Q}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q}, Q/N); % bigger
+qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ; N>NMax -> qlearn_max(Output, {N,Q}, Q/N); % more statistics
+qlearn_max([{_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ). % smaller or equal
 
 ann_norm_input(L) -> [ann_norm_single_input(I) || I <- L].
 
@@ -550,7 +553,13 @@ handle_call(finish, _From, #state{network=Network} = State) ->
 handle_call(start_learning, _From, State) ->
     {reply, ok, State#state{status=learning}};
 handle_call({predict, Input}, _From, #state{network=Network, status=playing} = State) ->
-    Out = ann:predict(Network, Input),
+    Inp = case lists:member(32, Input) of
+        false -> Input;
+        true ->  ann_norm_input(Input)
+    end,
+    ?Info("Predict Input ~p",[Inp]),
+    Out = ann:predict(Network, Inp),
+    ?Info("Predict Output ~p",[Out]),
     {reply, Out, State};
 handle_call({predict, _}, _From, State) ->
     {reply, ?ANN_NOT_PLAYING, State};
@@ -657,3 +666,22 @@ pick_output(Output, NormBoard, Flatten) ->
 %         end
 %     end,
 %     lists:foldl(MinMax, {[nil|<<255>>],-1.0e100}, L). 
+
+%% ===================================================================
+%% TESTS
+%% ===================================================================
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+qlearn_max_test_() ->
+    W = 3,
+    H = 3,
+    Board = lists:seq($a,$a+W*H-1),
+    [ {"{1,1}",   ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,0},{1,1}]))}
+    , {"{1,0}", ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,0},{1,-1}]))}
+    , {"{1,-0.5}", ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,-0.5},{1,-1}]))}
+    ].
+
+-endif.
