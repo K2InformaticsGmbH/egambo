@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpModule } from '@angular/http';
 
 import { AppComponent } from './app.component';
-import { BoardComponent } from './board/board.component';
+import { BoardComponent } from './games/board/board.component';
 import { MovesComponent } from './moves/moves.component';
 import { WelcomeComponent } from './welcome/welcome.component';
 import { HeaderComponent } from './header/header.component';
@@ -12,6 +12,8 @@ import { LoginComponent } from './auth/login/login.component';
 import { RegisterComponent } from './auth/register/register.component';
 import { AuthService } from 'app/auth/auth.service';
 import { AppRoutingModule } from 'app/app-routing.module';
+import { TypeListComponent } from './games/type-list/type-list.component';
+import { GameListComponent } from './games/game-list/game-list.component';
 
 @NgModule({
     declarations: [
@@ -21,7 +23,9 @@ import { AppRoutingModule } from 'app/app-routing.module';
         WelcomeComponent,
         HeaderComponent,
         LoginComponent,
-        RegisterComponent
+        RegisterComponent,
+        TypeListComponent,
+        GameListComponent
     ],
     imports: [
         BrowserModule,

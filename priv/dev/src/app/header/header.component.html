@@ -14,14 +14,14 @@
           <li><a routerLink="/login">Login</a></li>
           <li><a routerLink="/register">Register</a></li>
         </ng-template>
-        <li *ngIf="authService.isAuthenticated()"><a (click)="onLogout()">Logout</a></li>
-        <li class="dropdown" appDropdown *ngIf="authService.isAuthenticated()">
+        <li *ngIf="authService.isAuthenticated()"><a (click)="logout()">Logout</a></li>
+        <!--li class="dropdown" appDropdown *ngIf="authService.isAuthenticated()">
           <a class="dropdown-toggle" role="button">Manage <span class="caret"></span></a>
           <ul class="dropdown-menu">
             <li><a (click)="saveData()">Save Data</a></li>
             <li><a (click)="fetchData()">Fetch Data</a></li>
           </ul>
-        </li>
+        </li-->
       </ul>
     </div>
   </div>
