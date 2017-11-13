@@ -1,0 +1,28 @@
+<nav class="navbar navbar-default">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <a routerLink="/welcome" class="navbar-brand">Egambo</a>
+    </div>
+    <div class="navbar-default">
+      <!-- TODO: Here the action menu should be active ? -->
+      <!--ul class="nav navbar-nav">
+        <li routerLinkActive="active"><a routerLink="recipes">Recipes</a></li>
+        <li routerLinkActive="active"><a routerLink="shopping-list">Shopping List</a></li>
+      </ul-->
+      <ul class="nav navbar-nav navbar-right">
+        <ng-template [ngIf]="!authService.isAuthenticated()">
+          <li><a routerLink="/login">Login</a></li>
+          <li><a routerLink="/register">Register</a></li>
+        </ng-template>
+        <li *ngIf="authService.isAuthenticated()"><a (click)="onLogout()">Logout</a></li>
+        <li class="dropdown" appDropdown *ngIf="authService.isAuthenticated()">
+          <a class="dropdown-toggle" role="button">Manage <span class="caret"></span></a>
+          <ul class="dropdown-menu">
+            <li><a (click)="saveData()">Save Data</a></li>
+            <li><a (click)="fetchData()">Fetch Data</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
