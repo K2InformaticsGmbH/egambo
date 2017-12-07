@@ -14,6 +14,8 @@ import { AuthService } from 'app/auth/auth.service';
 import { AppRoutingModule } from 'app/app-routing.module';
 import { TypeListComponent } from './games/type-list/type-list.component';
 import { GameListComponent } from './games/game-list/game-list.component';
+import { GameTypesResolve } from 'app/games/type-list/game-types.resolve';
+import { DataStorageService } from 'app/data-storage.service';
 
 @NgModule({
     declarations: [
@@ -33,7 +35,11 @@ import { GameListComponent } from './games/game-list/game-list.component';
         HttpModule,
         AppRoutingModule
     ],
-    providers: [AuthService],
+    providers: [
+        AuthService,
+        DataStorageService,
+        GameTypesResolve
+    ],
     bootstrap: [AppComponent]
 })
 export class AppModule { }

@@ -22,6 +22,7 @@ get_routes() ->
     %% probably we need explicit trailing / support ?
     PublicDir = filename:join([priv_dir(), "public"]),
     [{"/", cowboy_static, {file, PublicDir ++ "/index.html"}},
+     {"/api/[...]", egambo_resource, []},
      {"/[...]", cowboy_static, {dir, PublicDir}}].
 
 -spec priv_dir() -> list().
