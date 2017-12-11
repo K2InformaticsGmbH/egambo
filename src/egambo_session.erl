@@ -207,6 +207,7 @@ change_credentials(User, Password, NewPassword, SessionId) ->
 -spec get_userid(integer(), binary()) -> {ok, ddEntityId()} | {error, unauthorized}.
 get_userid(SKey, User) when is_integer(SKey), is_binary(User) ->
     try
+        %% TODO: Fix this, doesn't work for users without manage_account...
         UserId = imem_account:get_id_by_name(SKey,User),
         {ok, UserId}
     catch
