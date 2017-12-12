@@ -38,7 +38,7 @@ init(Req, []) ->
 
 info({reply, Body}, Req, State) when is_binary(Body) ->
     ?Debug("reply ~n~p to ~p", [Body, State]),
-    {ok, Req2} = cowboy_req:reply(200, #{
+    Req2 = cowboy_req:reply(200, #{
         <<"content-encoding">> => <<"utf-8">>,
         <<"content-type">> => <<"application/json">>
     }, Body, Req),
@@ -53,7 +53,7 @@ terminate(_Reason, _Req, _State) ->
 -spec build_reply_fun(pid()) -> fun().
 build_reply_fun(Self) ->
     fun(Reply) ->
-        Self ! {reply, jsx:encode(Reply)}
+        Self ! {reply, jsx:encode(#{resp => Reply})}
     end.
 
 -spec build_notify_fun() -> fun().
