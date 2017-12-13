@@ -12,7 +12,7 @@ export class DataStorageService {
         return this.http.post(urlPrefix + 'get_game_types', {})
             .map((res) => {
                 console.log(res);
-                return res.json();
+                return res.json().resp;
             });
     }
 

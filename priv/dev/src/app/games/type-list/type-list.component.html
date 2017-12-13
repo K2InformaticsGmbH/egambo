@@ -1,3 +1,19 @@
 <p>
-  List of supported game types from server will be presented here.
+  List of supported game types:
 </p>
+<div class="row">
+  <div class="col-xs-12">
+      <a
+        *ngFor="let gameType of gameTypes; let i = index"
+        style="cursor: pointer;"
+        [routerLink]="[index]"
+        routerLinkActive="active"
+        class="list-group-item clearfix">
+      <div class="pull-left">
+        <h4 class="list-group-item-heading">{{ gameType.name }}</h4>
+        <p class="list-group-item-text">{{ gameType.info }}</p>
+      </div>
+    </a>
+  </div>
+</div>
+

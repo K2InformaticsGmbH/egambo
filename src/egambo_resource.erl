@@ -28,7 +28,10 @@ init(Req, []) ->
             SessionId = get_session(SessionToken),
             {ok, Body, Req2} = cowboy_req:read_body(Req), %% Might not be complete.
             ReplyFun = build_reply_fun(self()),
-            egambo_session:request(SessionId, imem_json:decode(Body, [return_maps]), ReplyFun),
+            [Action] = cowboy_req:path_info(Req),
+            Args = imem_json:decode(Body, [return_maps]),
+            ?Info("Requested action ~p and args ~p", [Action, Args]),
+            egambo_session:request(SessionId, Args#{<<"action">> => Action}, ReplyFun),
             {cowboy_loop, Req2, undefined};
         _Else ->
             ?Error("request ~p doesn not contain body", [Req]),

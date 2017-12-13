@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -include("egambo.hrl").
+-include("egambo_game.hrl").
 
 -export([
     start_link/2,
@@ -33,9 +34,11 @@ start_link(SessionId, NotifyFun) ->
 request(SessionId, #{<<"action">> := Action} = ReqArgs, ReplyFun) ->
     case extract_args(Action, ReqArgs) of
         invalid -> ReplyFun(<<"Invalid arguments or action not implemented">>);
-        Args -> gen_server:cast({global, SessionId}, {Action, Args, ReplyFun})
+        Args ->
+            gen_server:cast({global, SessionId}, {Action, Args, ReplyFun})
     end;
-request(_SessionId, _ReqArgs, ReplyFun) when is_function(ReplyFun) ->
+request(SessionId, ReqArgs, ReplyFun) when is_function(ReplyFun) ->
+    ?Error("Invalid request for ~p with args: ~p", [SessionId, ReqArgs]),
     ReplyFun(<<"Invalid request">>).
 
 init([SessionId, NotifyFun]) ->
@@ -44,6 +47,9 @@ init([SessionId, NotifyFun]) ->
 handle_call(_Req, _From, State) ->
     {reply, {error, <<"invalid request">>}, State}.
 
+handle_cast({<<"get_game_types">>, {}, ReplyFun}, #state{playerId = PlayerId} = State) ->
+    ReplyFun(get_game_types(PlayerId)),
+    {noreply, State};
 handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefined, sessionId = SessionId, notifyFun = NotifyFun} = State) ->
     case authenticate(User, Password, SessionId) of
         {error, invalid} ->
@@ -132,7 +138,8 @@ handle_cast({<<"play">>, {GameId, Pos}, ReplyFun}, #state{playerId = PlayerId} =
     Result = egambo_game:play(GameId, Pos, PlayerId),
     ReplyFun(iolist_to_binary(io_lib:format("~p", [Result]))),
     {noreply, State};
-handle_cast({_, _, ReplyFun}, State) when is_function(ReplyFun) ->
+handle_cast({Action, Parameters, ReplyFun}, State) when is_function(ReplyFun) ->
+    ?Info("Unhandled action ~p received with parameters: ~p", [Action, Parameters]),
     ReplyFun(<<"Invalid request">>),
     {noreply, State};
 handle_cast(Request, #state{sessionId = SessionId, playerId = PlayerId} = State) ->
@@ -150,6 +157,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 -spec extract_args(binary(), map()) -> tuple().
+extract_args(<<"get_game_types">>, _Args) -> {};
 extract_args(<<"login">>, #{<<"user">> := User, <<"password">> := Password}) when
             is_binary(User), is_binary(Password) -> {User, Password};
 extract_args(<<"change_credentials">>, #{<<"user">> := User, <<"password">> := Password,
@@ -204,17 +212,23 @@ change_credentials(User, Password, NewPassword, SessionId) ->
             {error, internal_error}
     end.
 
--spec get_userid(integer(), binary()) -> {ok, ddEntityId()} | {error, unauthorized}.
+-spec get_userid(integer(), binary()) -> {ok, ddEntityId()} | {error, not_found}.
 get_userid(SKey, User) when is_integer(SKey), is_binary(User) ->
-    try
-        %% TODO: Fix this, doesn't work for users without manage_account...
-        UserId = imem_account:get_id_by_name(SKey,User),
-        {ok, UserId}
-    catch
-        throw:{'ClientError', {"Account does not exist", User}} -> {error, not_found};
-        _:Error -> {error, Error}
+    case imem_meta:select(ddAccount, [{#ddAccount{name = User, _='_'}, [], ['$_']}]) of
+        {[#ddAccount{id = Id}], _} -> {ok, Id};
+        _ -> {error, not_found}
     end.
 
+-spec get_game_types(ddEntityId()) -> list().
+get_game_types(undefined) ->
+    %% TODO: This needs revisit, should the egambo_game module the one
+    %%       knowing the records ? maybe egambo_dal ?...
+    Types = imem_meta:read(egGameType),
+    [#{name => Name, category => Category, level => Level, info => Info} ||
+        #egGameType{tname = Name, cid = Category, level = Level, info = Info} <- Types];
+get_game_types(PlayerId) ->
+    ?Info("Missing implementation for authenticatd users, playerid: ~p", [PlayerId]),
+    #{error => <<"Not implemented">>}.
 
 
 % egambo_game:create(<<"tic_tac_toe">>, 2).
