@@ -16,6 +16,8 @@ import { TypeListComponent } from './games/type-list/type-list.component';
 import { GameListComponent } from './games/game-list/game-list.component';
 import { GameTypesResolve } from 'app/games/type-list/game-types.resolve';
 import { DataStorageService } from 'app/data-storage.service';
+import { GameComponent } from './games/game/game.component';
+import { WrapperComponent } from './games/wrapper/wrapper.component';
 
 @NgModule({
     declarations: [
@@ -27,7 +29,9 @@ import { DataStorageService } from 'app/data-storage.service';
         LoginComponent,
         RegisterComponent,
         TypeListComponent,
-        GameListComponent
+        GameListComponent,
+        GameComponent,
+        WrapperComponent
     ],
     imports: [
         BrowserModule,

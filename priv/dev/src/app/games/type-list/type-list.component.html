@@ -3,10 +3,11 @@
 </p>
 <div class="row">
   <div class="col-xs-12">
+      <!-- TODO: Should we use a grid here instead ? -->
       <a
-        *ngFor="let gameType of gameTypes; let i = index"
+        *ngFor="let gameType of gameTypes"
         style="cursor: pointer;"
-        [routerLink]="[index]"
+        [routerLink]="[gameType.id]"
         routerLinkActive="active"
         class="list-group-item clearfix">
       <div class="pull-left">

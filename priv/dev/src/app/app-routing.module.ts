@@ -5,13 +5,18 @@ import { RegisterComponent } from "app/auth/register/register.component";
 import { WelcomeComponent } from "app/welcome/welcome.component";
 import { TypeListComponent } from "app/games/type-list/type-list.component";
 import { GameTypesResolve } from "app/games/type-list/game-types.resolve";
+import { GameListComponent } from "app/games/game-list/game-list.component";
+import { WrapperComponent } from "app/games/wrapper/wrapper.component";
 
 const appRoutes: Routes = [
     {path: '', redirectTo: 'welcome', pathMatch: 'full'},
     {path: 'welcome', component: WelcomeComponent},
     {path: 'register', component: RegisterComponent},
     {path: 'login', component: LoginComponent},
-    {path: 'type-list', component: TypeListComponent, resolve: {types: GameTypesResolve}}
+    {path: 'type-list', component: WrapperComponent, children: [
+        {path: '', component: TypeListComponent, resolve: {types: GameTypesResolve}},
+        {path: ':type', component: GameListComponent}
+    ]}
 ];
 
 @NgModule({

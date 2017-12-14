@@ -4,7 +4,13 @@
 -include("egambo.hrl").
 
 %% API
--export([start_link/0, start_session/2, close_session/1, list_sessions/0]).
+-export([
+    start_link/0,
+    start_session/2,
+    start_session/3,
+    close_session/1,
+    list_sessions/0
+]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -29,7 +35,12 @@ start_link() ->
 
 -spec start_session(binary(), fun()) -> {error, term()} | {ok, pid()}.
 start_session(SessionId, MsgFun) ->
-    supervisor:start_child(?MODULE, [SessionId, MsgFun]).
+    %% From tcp there is no xsrf token.
+    start_session(SessionId, <<>>, MsgFun).
+
+-spec start_session(binary(), binary(), fun()) -> {error, term()} | {ok, pid()}.
+start_session(SessionId, XSRFToken, MsgFun) ->
+    supervisor:start_child(?MODULE, [SessionId, XSRFToken, MsgFun]).
 
 -spec close_session(pid() | binary()) -> ok | {error, not_found | simple_one_for_one}.
 close_session(SessionId) when is_binary(SessionId) ->

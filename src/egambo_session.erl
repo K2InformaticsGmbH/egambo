@@ -5,7 +5,8 @@
 -include("egambo_game.hrl").
 
 -export([
-    start_link/2,
+    start_link/3,
+    get_xsrfToken/1,
     request/3
 ]).
 
@@ -23,12 +24,17 @@
     playerId :: egAccountId(),
     skey :: integer(),
     sessionId :: binary(),
+    xsrf :: binary(),
     notifyFun :: fun()
 }).
 
--spec start_link(binary(), fun()) -> {ok, pid()} | {error, term()}.
-start_link(SessionId, NotifyFun) ->
-    gen_server:start_link({global, SessionId}, ?MODULE, [SessionId, NotifyFun], []).
+-spec start_link(binary(), binary(), fun()) -> {ok, pid()} | {error, term()}.
+start_link(SessionId, XSRFToken, NotifyFun) ->
+    gen_server:start_link({global, SessionId}, ?MODULE, [SessionId, XSRFToken, NotifyFun], []).
+
+-spec get_xsrfToken(binary()) -> binary().
+get_xsrfToken(SessionId) ->
+    gen_server:call({golbal, SessionId}, get_xsrfToken).
 
 -spec request(binary(), map(), fun()) -> ok | {error, binary()}.
 request(SessionId, #{<<"action">> := Action} = ReqArgs, ReplyFun) ->
@@ -41,9 +47,12 @@ request(SessionId, ReqArgs, ReplyFun) when is_function(ReplyFun) ->
     ?Error("Invalid request for ~p with args: ~p", [SessionId, ReqArgs]),
     ReplyFun(<<"Invalid request">>).
 
-init([SessionId, NotifyFun]) ->
-    {ok, #state{sessionId = SessionId, notifyFun = NotifyFun}}.
+init([SessionId, XSRFToken, NotifyFun]) ->
+    {ok, #state{sessionId = SessionId, xsrf = XSRFToken, notifyFun = NotifyFun}}.
 
+handle_call(get_xsrfToken, _From, State) ->
+    ?Debug("get_xsrfToken, result: ~p~n", [State#state.xsrf]),
+    {reply, State#state.xsrf, State};
 handle_call(_Req, _From, State) ->
     {reply, {error, <<"invalid request">>}, State}.
 
@@ -224,8 +233,8 @@ get_game_types(undefined) ->
     %% TODO: This needs revisit, should the egambo_game module the one
     %%       knowing the records ? maybe egambo_dal ?...
     Types = imem_meta:read(egGameType),
-    [#{name => Name, category => Category, level => Level, info => Info} ||
-        #egGameType{tname = Name, cid = Category, level = Level, info = Info} <- Types];
+    [#{id => Id, name => Name, difficulty => Level, description => Info} ||
+        #egGameType{tid = Id, tname = Name, level = Level, info = Info} <- Types];
 get_game_types(PlayerId) ->
     ?Info("Missing implementation for authenticatd users, playerid: ~p", [PlayerId]),
     #{error => <<"Not implemented">>}.
