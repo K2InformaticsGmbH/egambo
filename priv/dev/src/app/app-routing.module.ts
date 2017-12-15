@@ -7,6 +7,8 @@ import { TypeListComponent } from "app/games/type-list/type-list.component";
 import { GameTypesResolve } from "app/games/type-list/game-types.resolve";
 import { GameListComponent } from "app/games/game-list/game-list.component";
 import { WrapperComponent } from "app/games/wrapper/wrapper.component";
+import { GameComponent } from "app/games/game/game.component";
+import { GameListResolve } from "app/games/game-list/game-list.resolve";
 
 const appRoutes: Routes = [
     {path: '', redirectTo: 'welcome', pathMatch: 'full'},
@@ -15,7 +17,10 @@ const appRoutes: Routes = [
     {path: 'login', component: LoginComponent},
     {path: 'type-list', component: WrapperComponent, children: [
         {path: '', component: TypeListComponent, resolve: {types: GameTypesResolve}},
-        {path: ':type', component: GameListComponent}
+        {path: ':type', component: WrapperComponent, children: [
+            {path: '', component: GameListComponent, resolve: {games: GameListResolve}},
+            {path: ':id', component: GameComponent}
+        ]}
     ]}
 ];
 

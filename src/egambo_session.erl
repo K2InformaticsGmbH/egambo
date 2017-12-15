@@ -59,6 +59,9 @@ handle_call(_Req, _From, State) ->
 handle_cast({<<"get_game_types">>, {}, ReplyFun}, #state{playerId = PlayerId} = State) ->
     ReplyFun(get_game_types(PlayerId)),
     {noreply, State};
+handle_cast({<<"list_games">>, {Type}, ReplyFun}, #state{playerId = PlayerId} = State) ->
+    ReplyFun(list_games(PlayerId, Type)),
+    {noreply, State};
 handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefined, sessionId = SessionId, notifyFun = NotifyFun} = State) ->
     case authenticate(User, Password, SessionId) of
         {error, invalid} ->
@@ -167,6 +170,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec extract_args(binary(), map()) -> tuple().
 extract_args(<<"get_game_types">>, _Args) -> {};
+extract_args(<<"list_games">>, #{<<"type">> := Type}) -> {Type};
 extract_args(<<"login">>, #{<<"user">> := User, <<"password">> := Password}) when
             is_binary(User), is_binary(Password) -> {User, Password};
 extract_args(<<"change_credentials">>, #{<<"user">> := User, <<"password">> := Password,
@@ -238,6 +242,15 @@ get_game_types(undefined) ->
 get_game_types(PlayerId) ->
     ?Info("Missing implementation for authenticatd users, playerid: ~p", [PlayerId]),
     #{error => <<"Not implemented">>}.
+
+-spec list_games(ddEntityId(), binary()) -> list().
+list_games(PlayerId, Type) ->
+    {Games, _} = imem_meta:select(egGame, [
+        {#egGame{players = [PlayerId, '_'], tid = Type, _ = '_'}, [], ['$_']},
+        {#egGame{players = ['_', PlayerId], tid = Type, _ = '_'}, [], ['$_']}
+    ]),
+    [#{id => Id, nmoves => length(Moves)} || #egGame{gid = Id, moves = Moves} <- Games].
+
 
 
 % egambo_game:create(<<"tic_tac_toe">>, 2).
