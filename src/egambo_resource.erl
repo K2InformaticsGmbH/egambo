@@ -16,6 +16,7 @@
 -define(REQUEST_TIMEOUT, 5000).
 
 -define(COOKIE_NAME, <<"EGAMBO-SESSION">>).
+-define(EGAMBO_XSRF_COOKIE, <<"XSRF-TOKEN">>).
 
 %% TODO: Add login & xsrf protection.
 init(Req, []) ->
@@ -105,5 +106,5 @@ set_cookies(Req, SessionToken, XSRFToken, Opts) ->
     Path = dderl:format_path(""),
     Req1 = cowboy_req:set_resp_cookie(?COOKIE_NAME, SessionToken, Req,
                                       maps:merge(Opts, ?HTTP_ONLY_COOKIE_OPTS(Host, Path))),
-    cowboy_req:set_resp_cookie(?XSRF_COOKIE, XSRFToken, Req1,
+    cowboy_req:set_resp_cookie(?EGAMBO_XSRF_COOKIE, XSRFToken, Req1,
                                maps:merge(Opts, ?COOKIE_OPTS(Host, Path))).

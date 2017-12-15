@@ -34,7 +34,7 @@ start_link(SessionId, XSRFToken, NotifyFun) ->
 
 -spec get_xsrfToken(binary()) -> binary().
 get_xsrfToken(SessionId) ->
-    gen_server:call({golbal, SessionId}, get_xsrfToken).
+    gen_server:call({global, SessionId}, get_xsrfToken).
 
 -spec request(binary(), map(), fun()) -> ok | {error, binary()}.
 request(SessionId, #{<<"action">> := Action} = ReqArgs, ReplyFun) ->
