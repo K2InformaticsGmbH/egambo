@@ -356,12 +356,6 @@ ann_sample_training(Input, Output, MTE, OMove, Olen, Alfa, Gamma, Key, LastTrain
             hash_collision
     end.
 
-% apply_move1(Input, 1, Alias) ->
-%     [Alias|tl(Input)];
-% apply_move1(Input, Move1, Alias) -> 
-%     {H,T} = lists:split(Move1-1, Input),
-%     H ++ [Alias|tl(T)]. 
-
 
 %% Output (gain) of a single sample output item depending on the MTE (moves to end)
 %% An MTE of 0 (a win) is placed somewhat above the higest sensitivity of the AF
@@ -420,25 +414,6 @@ ann_norm_single_input(I) -> I/256.0.
 ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
     Fun = fun(0) -> 0; ({0,_}) -> ?ANN_OUTPUT_UNSAMPLED;  ({N,S}) -> S/N end,     % free floating for occupied
     lists:map(Fun, AggregatedOutputVector). 
-
-
-% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-%     Fac = case norm(AggregatedOutputVector) of
-%         0.0 ->      0.0;
-%         0 ->        0.0;
-%         Norm ->     1.0 / Norm
-%     end,
-%     Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
-%     lists:map(Fun, AggregatedOutputVector). 
-
-% ann_norm_sample_output(AggregatedOutputVector, _QOS) ->
-%   Fac = 1.0 / norm(AggregatedOutputVector),
-%   Fun = fun(W) -> Fac * W end,  % Same vector length of 1 for all samples
-%   lists:map(Fun, AggregatedOutputVector). 
-
-% ann_norm_sample_output(AggregatedOutputVector, QOS) ->
-%     Fun = fun(W) -> W/QOS end,  % Average over all Samples
-%     lists:map(Fun, AggregatedOutputVector). 
 
 norm(Vector) -> 
     Fun = fun(W, Acc) -> W*W+Acc end,
@@ -522,7 +497,7 @@ handle_cast({play_bot_req, GameId, Board, NAliases}, #state{ width=Width, height
                             {ok, Idx, NewBoard} = egambo_tictac_bot:play_bot_random(Board, Width, Height, Run, Gravity, Periodic, WinMod, NAliases, Options),
                             play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard});
                         _ ->
-                            {ok, Idx, NewBoard} = play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, NAliases, Network, Flatten),
+                            {ok, Idx, NewBoard} = play_bot_impl(Board, Width, Height, Run, Gravity, Periodic, IAliases, NAliases, Network, Flatten),
                             play_bot_resp(GameId, hd(NAliases), {ok, Idx, NewBoard})
                     end;
                 Error -> 
@@ -607,41 +582,22 @@ send_to_engine(GameId, Message) ->
         exit:{badarg, {_, _}} -> ?Error("GameEngine ~p unreachable. Dropped message: ~p",[GameId, Message])
     end.
 
-
-% -spec play_bot_immediate_win(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> {ok, integer(), binary()} | {nok, no_immediate_win} | {error, atom()}.
-% play_bot_immediate_win(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_win};  
-% play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, [I|Rest]) -> 
-%     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Aliases)),
-%     case egambo_tictac:is_win(WinMod, TestBoard, Aliases) of
-%         true ->     {ok, Idx, TestBoard};
-%         false ->    play_bot_immediate_win(Board, Width, Height, Run, Gravity, Periodic, WinMod, Aliases, Rest)
-%     end.
-
-% -spec play_bot_defend_immediate(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {nok, no_immediate_risk} | {error, atom()}.
-% play_bot_defend_immediate(_Board, _Width, _Height, _Run, _Gravity, _Periodic, _WinMod, _Aliases, []) -> {nok, no_immediate_risk};
-% play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], [I|Rest]) -> 
-%     {ok, Idx, TestBoard} = egambo_tictac:put(Gravity, Board, Width, I, hd(Others)),
-%     case egambo_tictac:is_win(WinMod, TestBoard, Others) of
-%         true ->     egambo_tictac:put(Gravity, Board, Width, Idx, Player);
-%         false ->    play_bot_defend_immediate(Board, Width, Height, Run, Gravity, Periodic, WinMod, [Player|Others], Rest)
-%     end.
-
--spec play_bot_ann(binary(), integer(), integer(), boolean(), boolean(), [egAlias()], [egAlias()], pid(), number()) -> egBotMove().
-play_bot_ann(Board, Width, Height, Gravity, Periodic, IAliases, [Player|_]=NAliases, Network, Flatten) ->
-    % ?Info("play_bot_ann Board, NAliases ~p ~p", [Board, NAliases]),
+-spec play_bot_impl(binary(), integer(), integer(), integer(), boolean(), boolean(), [egAlias()], [egAlias()], pid(), number()) -> egBotMove().
+play_bot_impl(Board, Width, Height, _Run, Gravity, Periodic, IAliases, [Player|_]=NAliases, Network, Flatten) ->
+    % ?Info("play_bot_impl Board, NAliases ~p ~p", [Board, NAliases]),
     ABoard = egambo_tictac:norm_aliases(Board, NAliases, IAliases),
-    % ?Info("play_bot_ann ABoard after alias transform ~p ", [ABoard]),
+    % ?Info("play_bot_impl ABoard after alias transform ~p ", [ABoard]),
     {NormBoard, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
-    % ?Info("play_bot_ann normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
+    % ?Info("play_bot_impl normalized Board and symmetry used ~p ~p", [NormBoard, Sym]),
     NormIn = ann_norm_input(NormBoard),
-    % ?Info("play_bot_ann Network, NormIn ~p ~p ", [Network, NormIn]),
+    % ?Info("play_bot_impl Network, NormIn ~p ~p ", [Network, NormIn]),
     Output = ann:predict(Network, NormIn),
-    % ?Info("play_bot_ann network Output ~p",[Output]),    
+    % ?Info("play_bot_impl network Output ~p",[Output]),    
     NormIdx = pick_output(Output, NormBoard, Flatten),      % 0-based index for predicted move
     NewIdx = egambo_tictac_sym:unmap_move(Width, Height, NormIdx, Sym),    
-    % ?Info("play_bot_ann NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
+    % ?Info("play_bot_impl NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
     {ok, Idx, NewBoard} = egambo_tictac:put(Gravity, Board, Width, NewIdx, Player),
-    % ?Info("play_bot_ann Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
+    % ?Info("play_bot_impl Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
     {ok, Idx, NewBoard}.
 
 -spec pick_output(list(), list(), number()) -> integer().
@@ -680,8 +636,8 @@ qlearn_max_test_() ->
     H = 3,
     Board = lists:seq($a,$a+W*H-1),
     [ {"{1,1}",   ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,0},{1,1}]))}
-    , {"{1,0}", ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,0},{1,-1}]))}
-    , {"{1,-0.5}", ?_assertEqual({1,1}, qlearn_max([0,0,{0,0},{1,-0.5},{1,-1}]))}
+    , {"{1,0}", ?_assertEqual({1,0}, qlearn_max([0,0,{0,0},{1,0},{1,-1}]))}
+    , {"{1,-0.5}", ?_assertEqual({1,-0.5}, qlearn_max([0,0,{0,0},{1,-0.5},{1,-1}]))}
     ].
 
 -endif.

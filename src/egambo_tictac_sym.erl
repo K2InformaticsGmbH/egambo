@@ -17,6 +17,8 @@
 
 -define(SYM_MODULE(__W, __H), list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_~p_~p",[__W, __H])))).
 
+-safe(all).
+
 sym_export(_W, _H, Symmetries) ->
     F = fun(X) -> atom_to_list(X) end,
     lists:flatten(lists:join("/1, ", lists:map(F, Symmetries)) ++ "/1").
@@ -254,7 +256,7 @@ map_44_test_() ->
     , {"g_lft",   ?_assertEqual("dhlpcgkobfjnaeim", map(W, H, Board, g_lft))}
     , {"h_rgt",   ?_assertEqual("mieanjfbokgcplhd", map(W, H, Board, h_rgt))}
     , {"a_idex1", ?_assertEqual("dabchefglijkpmno", map(W, H, Board, {a_ide,1,0}))}
-    , {"rgtx1y1", ?_assertEqual("dplhamiebnjfcokg", map(W, H, Board, {rgt,1,1}))}
+    , {"rgtx1y1", ?_assertEqual("dplhamiebnjfcokg", map(W, H, Board, {h_rgt,1,1}))}
     ].
 
 sym_44_test_() ->
