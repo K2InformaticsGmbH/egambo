@@ -357,6 +357,9 @@ handle_cast(Request, State) ->
     ?Info("Unsolicited handle_cast in ~p : ~p", [?MODULE, Request]),
     {noreply, State}.
   
+handle_info(Reqest, State) when element(1, Reqest) == notify_bot_req ->
+    % ignore game notifications 
+    {noreply, State};
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p", [?MODULE, Request]),
     {noreply, State}.

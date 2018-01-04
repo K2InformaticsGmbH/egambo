@@ -23,6 +23,8 @@
                 , bots     = []             :: [module()]          % internal bot player modules (undefined for external players)
                 , etime    = undefined      :: egTime()            % last status change time (so far), game end time (eventually)
                 , space    = <<>>           :: binary()            % initial board state
+                , ialiases = []             :: [egAlias()]         % initial aliases (from game type parameters)
+                , imovers  = []             :: [egAccountId()]     % initial player AccountId enumeration (first moves)
                 , status   = forming        :: egGameStatus()      % current game (management) status
                 , board    = <<>>           :: binary()            % current board (game state) before next move
                 , nmovers  = []             :: [egAccountId()]     % next player AccountId enumeration for coming moves
@@ -120,6 +122,8 @@ db_to_state ( #egGameType{params=Params}
                      , bots=Bots
                      , etime=EndTime
                      , space=Space
+                     , ialiases=IAliases
+                     , imovers=IMovers
                      , status=Status
                      , board=Board
                      , nmovers=NextMovers
@@ -134,7 +138,7 @@ db_to_state ( #egGameType{params=Params}
             Height=maps:get(height, Params),
             Run=maps:get(run, Params),
             Gravity=maps:get(gravity, Params),
-            Periodic=maps:get(periodic, Params),   
+            Periodic=maps:get(periodic, Params),
             #state  { gid=GameId
                     , tid=GameType
                     , width=Width
@@ -147,6 +151,8 @@ db_to_state ( #egGameType{params=Params}
                     , bots=Bots
                     , etime=EndTime
                     , space=Space
+                    , ialiases=IAliases
+                    , imovers=IMovers
                     , status=Status
                     , board=Board 
                     , nmovers=NextMovers
@@ -371,12 +377,6 @@ init([GameId]) ->
             GameType = egambo_game:read_type(Game#egGame.tid),
             case db_to_state(GameType, Game) of
                 #state{nmovers=Movers, players=Players, bots=Bots, etime=EndTime} = State ->
-                    case length((Bots -- [undefined]) -- [undefined]) of
-                        2 -> ok;
-                        _ -> 
-                            print_board(State),                     % Todo: remove debugging
-                            print_next(hd(State#state.naliases))    % Todo: remove debugging
-                    end,
                     erlang:send_after(?AUTOSAVE_PERIOD, self(), {save_state, EndTime}),
                     invoke_bot_if_due(Movers, Players, Bots),
                     {ok, State};
@@ -399,9 +399,9 @@ handle_info({play_bot_resp, Player, {ok, Cell, NewBoard}}, #state{naliases=[Play
         {stop, normal, NewState} -> {stop, normal, NewState};
         {reply, ok, NewState} ->    {noreply, NewState}
     end;
-handle_info({play_bot_resp, Player, Error}, #state{gid=GameId, bots=Bots, naliases=[Player|_], players=Players} = State) ->
+handle_info({play_bot_resp, Player, Error}, #state{tid=GameTypeId, gid=GameId, bots=Bots, naliases=[Player|_], players=Players} = State) ->
     NewTime = egambo_game:eg_time(),
-    egambo_game:notify(NewTime, GameId, error, {play_bot_resp, Player, Error}, Bots, Players),
+    egambo_game:notify(NewTime, GameTypeId, GameId, error, {play_bot_resp, Player, Error}, Bots, Players),
     {noreply, State};
 handle_info({save_state, SavedEndTime}, #state{etime=EndTime} = State) ->
     case EndTime of
@@ -452,7 +452,7 @@ handle_call(moves, _From, #state{gid=GameId, etime=EndTime, status=Status, space
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Movers, bots=Bots, winmod=WinMod, players=Players} = State) ->
+handle_new_move(Idx, NewBoard, #state{tid=GameTypeId, gid=GameId, ialiases=IAliases, imovers=IMovers, space=Space, naliases=Aliases, nmovers=Movers, bots=Bots, winmod=WinMod, players=Players} = State) ->
     NewAliases = rotate(Aliases),
     NewMovers = rotate(Movers),
     NewMoves = [{hd(Aliases), Idx}|State#state.moves],
@@ -468,13 +468,8 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                   , moves=NewMoves
                                   },
             save_state(NewState), 
-            egambo_game:notify(NewTime, GameId, close, result(NewState), Bots, Players),
-            case length((Bots -- [undefined]) -- [undefined]) of
-                2 -> ok;
-                _ -> 
-                    print_board(NewState),                  % Todo: remove debugging
-                    print_win(hd(Aliases))                  % Todo: remove debugging
-            end,
+            egambo_game:notify(NewTime, GameTypeId, GameId, close, result(NewState), Bots, Players),
+            notify_bots(Bots, GameTypeId, GameId, IAliases, IMovers, Space, finished, NewMovers, NewAliases, [-1,1], NewMoves),
             {stop, normal, NewState};
         false ->
             case is_tie(WinMod, NewBoard, Aliases) of
@@ -488,13 +483,8 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                           , moves=NewMoves
                                           },
                     save_state(NewState), 
-                    egambo_game:notify(NewTime, GameId, close, result(NewState), Bots, Players),
-                    case length((Bots -- [undefined]) -- [undefined]) of
-                        2 -> ok;
-                        _ -> 
-                            print_board(NewState),                  % Todo: remove debugging
-                            print_tie()                             % Todo: remove debugging
-                    end,
+                    egambo_game:notify(NewTime, GameTypeId, GameId, close, result(NewState), Bots, Players),
+                    notify_bots(Bots, GameTypeId, GameId, IAliases, IMovers, Space, finished, NewMovers, NewAliases, [0,0], NewMoves),
                     {stop, normal, NewState};
                 false ->
                     NewState = State#state{ etime=NewTime
@@ -504,13 +494,7 @@ handle_new_move(Idx, NewBoard, #state{gid=GameId, naliases=Aliases, nmovers=Move
                                           , nscores=rotate(State#state.nscores)
                                           , moves=NewMoves
                                           },
-                    egambo_game:notify(NewTime, GameId, status, result(NewState), Bots, Players),
-                    case length((Bots -- [undefined]) -- [undefined]) of
-                        2 -> ok;
-                        _ -> 
-                            print_board(NewState),          % Todo: remove debugging
-                            print_next(hd(NewAliases))      % Todo: remove debugging
-                    end,
+                    egambo_game:notify(NewTime, GameTypeId, GameId, status, result(NewState), Bots, Players),
                     invoke_bot_if_due(NewMovers, NewState#state.players, NewState#state.bots),
                     {reply, ok, NewState}
             end
@@ -524,6 +508,14 @@ invoke_bot(_, [], []) -> ok;
 invoke_bot(AccountId, [AccountId|_], [undefined|_]) -> ok;
 invoke_bot(AccountId, [AccountId|_], [Module|_]) -> self() ! {play_bot_req, Module};
 invoke_bot(AccountId, [_|Players], [_|Bots]) -> invoke_bot(AccountId, Players, Bots).
+
+notify_bots(Bots, GameTypeId, GameId, IAliases, _IMovers, Space, Status, _NMovers, NAliases, NScores, Moves) ->
+    [notify_bot(BotId, GameTypeId, GameId, IAliases, Space, Status, NAliases, NScores, Moves) || BotId <- lists:usort(Bots)].
+
+-spec notify_bot(egBotId(), egGameTypeId(), egGameId(), [egAlias()], binary(), egGameStatus(), [egAlias()], [egScore()], [{egAlias(),integer()}]) -> ok | {error, atom()}.
+notify_bot(undefined, _, _, _, _, _, _, _, _) -> ok;
+notify_bot(BotId, GameTypeId, GameId, IAliases, Space, Status, NAliases, NScores, Moves) ->
+    global:send(?BOT_ID(BotId, GameTypeId), {notify_bot_req, GameId, IAliases, Space, Status, NAliases, NScores, Moves}).
 
 -spec put(boolean(), binary(), integer(), integer(), integer()) -> {ok, integer(), binary()} | {error, atom()}.
 put(false, Board, _Width, Idx, NewVal) ->

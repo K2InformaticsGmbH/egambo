@@ -518,6 +518,9 @@ handle_info({'EXIT', Network, neural_network_shutdown}, #state{tid=GameTypeId, n
 handle_info({'EXIT', Network, neural_network_shutdown}, #state{tid=GameTypeId, network=Network} = State) -> 
     ?Info("Network stopped for game type ~p  ~p",[?MODULE, GameTypeId]),
     {noreply, State};
+handle_info(Reqest, State) when element(1, Reqest) == notify_bot_req ->
+    % ignore game notifications 
+    {noreply, State};
 handle_info(Request, State) -> 
     ?Info("Unsolicited handle_info in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
