@@ -185,97 +185,63 @@ handle_call(stop, _From, State) ->
 
 
 %% Scan the moves of a game from last to first and update an aggregated Q-learning table which can also be used to train an ANN (for interpolation)
-train_game([], _Table, _Width, _Height, _Gravity, _Periodic, _Explore, _LastTrainingRec) -> ok;
-train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, Explore, LastTrainingRec) ->
-    TrainingRec = train_move(Sample, Table, Width, Height, Gravity, Periodic, Explore, LastTrainingRec),
-    train_game(Samples, Table, Width, Height, Gravity, Periodic, Explore, TrainingRec).
+train_game([], _Table, _Width, _Height, _Gravity, _Periodic, _Explore, _Qmax) -> ok;
+train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, Explore, Qmax) ->
+    NextQmax = train_move(Sample, Table, Width, Height, Gravity, Periodic, Explore, Qmax),
+    train_game(Samples, Table, Width, Height, Gravity, Periodic, Explore, NextQmax).
 
 %% Format a single (already Alias-normalized) move for ann use (Board size input vector, Board size / Board Width output vector)
 %% and aggregate into the training Q table
 %% Score is the final score of the game as seen by the current player
-%% LastTrainingRec is the updated training data for the next move (played after the current one)
-%% LastTrainingRec is containing all Q(Board,Moves) as seen in the perspective of the opponent
-%% The Q-learning back-propagation needs to negate this Q for the current player 
-%% The estimate for the quality of this move hence is the negated current Q of the LastTrainingRec (neglect Joker subtleties for now)
-train_move([Board, _Players, Move, [Score|_], MTE], Table, Width, Height, false, Periodic, Explore, LastTrainingRec) ->
-    ?Info("ql train_move Board and Move ~p ~p", [Board, Move]),
+%% Qmax is the updated position quality (with respect to a win of X) for the next move (played after the current one)
+%% Qmax is calculated from all Q(Board, Moves) as seen in the perspective of the opponent
+%% The Q-learning back-propagation needs to negate this Q for the current player (neglect Joker subtleties for now)
+train_move([_Board, _Players, _Move, [Score|_], 0], _Table, _Width, _Height, _, _Periodic, _Explore, undefined) ->
+    % ?Info("ql train_move Board ~p and Move ~p for temporary X", [_Board, _Move]),
+    % ?Info("ql train_move immediate reward ~p ", [Score]),
+    % Do not record this pre-final board state. Decision will be taken by a one step look ahead, not from the Q-Table
+    {1,Score}; % (Qmax of final move, +1 for a win or 0 for a tie)
+train_move([Board, _Players, Move, _, MTE], Table, Width, Height, false, Periodic, Explore, Qmax) ->
+    % ?Info("ql train_move Board ~p and Move ~p for temporary X", [Board, Move]),
+    % ?Info("ql train_move target position qmax ~p ", [Qmax]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, false, Periodic, Board),
-    ?Info("ql train_move Input and Sym ~p ~p", [Input, Sym]),
-    Olen = Width*Height,
+    % ?Info("ql train_move Input ~p and Sym ~p", [Input, Sym]),
+    Olen = Width*Height,            % length of output vector (possible actions)
     OMove = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,   % one based index of move
-    F = fun(I) -> 
-        Inp=lists:nth(I, Input), 
-        if 
-            I==OMove ->  {1, immediate_q(MTE, Score)};  % move taken in sample
-            Inp==32 ->   {0, 0};                        % alternative legal move, not taken here
-            true ->      0                              % illegal move (occupied)
-        end 
-    end, 
-    Output = lists:map(F, lists:seq(1, Olen)),
-    ?Info("ql train_move Output ~p OutputIdx ~p LastTrainingRec ~p", [Output, OMove, LastTrainingRec]),
-    TrainingRec = train(Input, Output, MTE, Table, OMove, Olen, Explore, LastTrainingRec),
-    ?Info("ql train_move TrainingRec ~p ", [TrainingRec]),
-    TrainingRec;
-train_move([Board, _Players, Move, [Score|_], MTE], Table, Width, Height, true, Periodic, Explore, LastTrainingRec) ->
-    % ?Info("ql train_move Board and Move ~p ~p", [Board, Move]),
+    train(Input, sample_output(Input, Olen, OMove), MTE, Table, OMove, Olen, Explore, Qmax);
+train_move([Board, _Players, Move, _, MTE], Table, Width, Height, true, Periodic, Explore, Qmax) ->
+    % ?Info("ql train_move Board ~p and Move ~p for temporary X", [Board, Move]),
+    % ?Info("ql train_move target position qmax ~p ", [Qmax]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, true, Periodic, Board),
     % ?Info("ql train_move Input and Sym ~p ~p", [Input, Sym]),
-    Olen = Width*Height,
-    OMove = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,   % one based index of move
+    Olen = Width,                   % length of output vector (possible actions)
+    OMove = egambo_tictac_sym:map_move(Width, Height, Move rem Width, Sym) + 1,    % one based index to Output
+    train(Input, sample_output(Input, Olen, OMove), MTE, Table, OMove, Olen, Explore, Qmax).
+
+sample_output(Input, Olen, OMove) ->
     F = fun(I) -> 
         Inp=lists:nth(I, Input), 
         if 
-            I==OMove  -> {1, immediate_q(MTE, Score)};  % move taken in sample
-            Inp==32 ->   {0, 0};                        % alternative legal move, not taken here
-            true ->      0                              % illegal move (occupied)
+            I==OMove ->  {1, 0};    % intermediate move taken, no immediate reward - immediate_q(MTE>0,Score)=0
+            Inp==32 ->   {0, 0};    % alternative legal move, not taken here
+            true ->      0          % illegal move (occupied)
         end 
     end, 
     Output = lists:map(F, lists:seq(1, Olen)),
     % ?Info("ql train_move Output ~p OutputIdx ~p", [Output, OMove]),
-    train(Input, Output, MTE, Table, OMove, Olen, Explore, LastTrainingRec).
+    Output.
 
-immediate_q(0, Score) -> Score;
-immediate_q(_, _) -> 0.
-
-train(Input, Output, 0, _Table, _OMove, _Olen, _Explore, undefined) ->
-    % TrainingRec does not exist yet, create record but do not save it
-    #egTicTacQlSample{sin=Input, nos=1, aaq=Output};
-train(Input, Output, _MTE, Table, _OMove, _Olen, _Explore, undefined)  ->
-    case imem_meta:read(Table, list_to_binary(Input)) of
-        [] ->
-            % TrainingRec does not exist yet, create it
-            TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=1, aaq=Output},
-            imem_meta:write(Table, TrainingRec),
-            TrainingRec;   
+train(Input, Output, MTE, Table, OMove, Olen, Explore, Qmax) when MTE>0 ->
+    {PreviousSampleCount, AggregatedActionQualities} = case imem_meta:read(Table, list_to_binary(Input)) of
+        [] ->   % TrainingRec does not exist yet. Cheat a bit, double count the first result.
+            {0, qlearn_add(Output, Output, Qmax, OMove, Olen, Explore)}; 
         [#egTicTacQlSample{nos=N, aaq=OldOut}] ->
-            % Not the last move but cannot Q-learn from next action (record just processed is lost due to hash collision)
-            TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=N+1, aaq=vector_add(OldOut, Output)},
-            imem_meta:write(Table, TrainingRec),
-            TrainingRec
-    end;
-train(Input, Output, MTE, Table, OMove, Olen, Explore, LastTrainingRec) when MTE>0 ->
-    case imem_meta:read(Table, list_to_binary(Input)) of
-        [] ->
-            % TrainingRec does not exist yet, create it   
-            #egTicTacQlSample{aaq=NextOut} = LastTrainingRec,
-            % ?Info("LastTrainingRec ~p",[LastTrainingRec]),
-            TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=1, aaq=qlearn_add(Output, Output, NextOut, OMove, Olen, Explore)},
-            imem_meta:write(Table, TrainingRec),
-            TrainingRec;
-        [#egTicTacQlSample{nos=N, aaq=OldOut}] ->
-            % Not the last move, Q-learn from next action (just processed)
-            #egTicTacQlSample{aaq=NextOut} = LastTrainingRec,
-            % ?Info("LastTrainingRec ~p",[LastTrainingRec]),
-            TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=N+1, aaq=qlearn_add(OldOut, Output, NextOut, OMove, Olen, Explore)},
-            imem_meta:write(Table, TrainingRec),
-            TrainingRec
-    end.
-
-vector_add(OldOut, Output) ->
-    [vector_add_one(Old, Out) || {Old, Out} <- lists:zip(OldOut, Output)].
-
-vector_add_one(0, 0) -> 0;
-vector_add_one({AccN,AccQ}, {N,Q}) -> {AccN+N, AccQ+Q}. 
+            {N, qlearn_add(OldOut, Output, Qmax, OMove, Olen, Explore)}
+    end,
+    {CN,CQ} = NewQmax = qlearn_max(AggregatedActionQualities),   
+    TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=PreviousSampleCount+1, qos=CQ/CN, aaq=AggregatedActionQualities},
+    imem_meta:write(Table, TrainingRec),
+    NewQmax.
 
 qlearn_add(OldOut, Output, NextOut, OMove, Olen, Explore) ->
     Alfa = Explore,
@@ -288,13 +254,13 @@ qlearn_add(OldOut, Output, NextOut, OMove, Olen, Explore) ->
 %% invalid moves (actions):         0 + 0 -> 0
 qlearn_add_one(0, 0, _, _, _, _, _) -> 0;                           % invalid moves 
 qlearn_add_one({AccN,AccQ}, {0,_}, _, _, _, _, _) -> {AccN,AccQ};   % unsampled actions
-qlearn_add_one({0,0}, {N,Q}, OMove, NextOut, OMove, Alfa, Gamma) ->
+qlearn_add_one({0,0}, {N,Q}, OMove, Qmax, OMove, Alfa, Gamma) ->
     % Q-learn with immediate reward (Q=0 for TicTacChallenge)
-    {CN,CQ} = qlearn_max(NextOut),
+    {CN,CQ} = Qmax,
     {N, Alfa*(Q + Gamma*N*CQ/CN)};
-qlearn_add_one({AccN,AccQ}, {N,Q}, OMove, NextOut, OMove, Alfa, Gamma) ->
+qlearn_add_one({AccN,AccQ}, {N,Q}, OMove, Qmax, OMove, Alfa, Gamma) ->
     % Q-learn with immediate reward (Q=0 for TicTacChallenge)
-    {CN,CQ} = qlearn_max(NextOut),
+    {CN,CQ} = Qmax,
     AccNN = AccN+N,
     AccQN = AccNN*AccQ/AccN,
     {AccNN, AccQN + Alfa*(Q*AccNN/N + Gamma*CQ*AccNN/CN - AccQN)}.
@@ -307,7 +273,6 @@ qlearn_max([{0,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ); % unsamp
 qlearn_max([{N,Q}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q}, Q/N); % bigger
 qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ; N>NMax -> qlearn_max(Output, {N,Q}, Q/N); % more statistics
 qlearn_max([{_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ). % smaller or equal
-
 
 -spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
 play_bot_resp(GameId, Player, BotMove) -> 

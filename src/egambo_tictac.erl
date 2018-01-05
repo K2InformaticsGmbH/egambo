@@ -68,17 +68,18 @@
         , print/1
         ]).
 
--export([ norm_aliases/3    %% normalize board to initial alias order (simplifies bot playing)
-        , sample/5          %% sample one random move out of a finished game
-        , samples/5         %% sample all moves out of a finished game
-        , history/2         %% board with merged in move history
-        , random_idx0/1     %% zero based integer random number
-        , random_idx1/1     %% one based integer random number
-        , put_options/4
+-export([ norm_aliases/3        %% normalize board to initial alias order (simplifies bot playing) {}
+        , norm_aliases_sym/7    %% normalize board to initial alias order and default symmetry {Input,Sym}
+        , sample/5              %% sample one random move out of a finished game
+        , samples/5             %% sample all moves out of a finished game
+        , history/2             %% board with merged in move history
+        , random_idx0/1         %% zero based integer random number
+        , random_idx1/1         %% one based integer random number
+        , put_options/4         
         , shuffle/1
         ]).
 
--safe([sample, samples, history]).
+-safe([sample, samples, history, norm_aliases, norm_aliases_sym]).
 
 win_module(Width, Height, Run, false) ->
     list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
@@ -345,6 +346,10 @@ sample_board(Board, IAliases, [{P,Move}|Moves], FAliases, FScores, MTE) ->
 %% output (as a list): list of samples, see sample
 samples(Space, IAliases, Moves, FAliases, FScores) ->
     [sample_move(Space, IAliases, Moves, FAliases, FScores, MTE) || MTE <- lists:seq(0,length(Moves)-1)].
+
+-spec norm_aliases_sym(binary() | list(), [egAlias()], [egAlias()], integer(), integer(), boolean(), boolean()) -> {list(), atom()}.
+norm_aliases_sym(Board, NAliases, IAliases, Width, Height, Gravity, Periodic) ->
+    egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, norm_aliases(Board, NAliases, IAliases)).
 
 -spec norm_aliases(binary() | list(), [egAlias()], [egAlias()]) -> list().
 %% transform a tictac board by swapping player aliases to a given next player
