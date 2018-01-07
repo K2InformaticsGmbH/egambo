@@ -9,18 +9,20 @@
 -define(QL_TRAIN_OPTS, [{record_name, egTicTacQlSample}, {type, set}]).        
 -define(QL_OUTPUT_UNSAMPLED, 0.001).        % Value emitted as output for unsampled move in Export
 
--record(egTicTacQlSample,   { sin= <<>> :: binary() % binstr key of normalized position (Board)
-                            , nos=1     :: number() % number of samples (1...)
-                            , qos=1     :: number() % score of sample (-1..+1)
-                            , aaq=[]    :: list()   % aggregated action qualities
+-record(egTicTacQlSample,   { input= <<>> :: binary()  % binstr key of normalized position (Board)
+                            , nos=1       :: integer() % number of board samples (1...)
+                            , nmax=1      :: integer() % number of action samples (1...) for Qmax
+                            , qmax=1      :: number()  % Qmax of best action (-1..+1) as a quotient
+                            , aaq=[]    :: list()      % aggregated action qualities
                             }).
 
 -define(egTicTacQlSample,   [ binstr
-                            , number
+                            , integer
+                            , integer
                             , number
                             , list
                             ]).
-% rd(egTicTacQlSample, {sin, nos, qos, aaq}).
+% rd(egTicTacQlSample, {input, nos, nmax, qmax, aaq}).
 
 -record(state,  { bid        :: egBotId()       % bot id (= module name)
                 , tid        :: egGameTypeId()  % game type id
@@ -34,8 +36,8 @@
                 , winmod     :: egWinId()       % win function module
                 , players    :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
-                , explore=0.9 :: float()        % rate for exploration (0..1.0)
-                , flatten=0.01 :: float()       % 
+                , explore=0.999 :: float()      % rate for exploration (0..1.0)
+                , flatten=0.0 :: float()        % 
                 , table      :: atom()          % table name for Q-A-aggregation
                 }).
 
@@ -65,9 +67,10 @@
         , pick/4
         , play_bot_impl/11
         , train_game/8
+        , qlearn_max/1
         ]).
 
--safe([state, stop, resume, explore, flatten]).
+-safe([state, stop, resume, explore, flatten, qlearn_max, pick, play_bot_impl]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -239,7 +242,7 @@ train(Input, Output, MTE, Table, OMove, Olen, Explore, Qmax) when MTE>0 ->
             {N, qlearn_add(OldOut, Output, Qmax, OMove, Olen, Explore)}
     end,
     {CN,CQ} = NewQmax = qlearn_max(AggregatedActionQualities),   
-    TrainingRec=#egTicTacQlSample{sin=list_to_binary(Input), nos=PreviousSampleCount+1, qos=CQ/CN, aaq=AggregatedActionQualities},
+    TrainingRec=#egTicTacQlSample{input=list_to_binary(Input), nos=PreviousSampleCount+1, nmax=CN, qmax=CQ/CN, aaq=AggregatedActionQualities},
     imem_meta:write(Table, TrainingRec),
     NewQmax.
 
@@ -271,7 +274,7 @@ qlearn_max([], Max, _) -> Max;
 qlearn_max([0|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);     % invalid action
 qlearn_max([{0,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ); % unsampled action
 qlearn_max([{N,Q}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q}, Q/N); % bigger
-qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ; N>NMax -> qlearn_max(Output, {N,Q}, Q/N); % more statistics
+qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ, N>NMax -> qlearn_max(Output, {N,Q}, Q/N); % more statistics
 qlearn_max([{_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ). % smaller or equal
 
 -spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
@@ -361,5 +364,8 @@ pick(NOS, AccActionQuality, Explore, Flatten) ->
 
 target(0, _, _) -> -100; 
 target({0,0}, _, _) -> 100; 
-target({N,Q}, NOS, Explore) -> Q/N + Explore*math:sqrt(NOS)/(1+N).
+target({N,Q}, NOS, Explore) -> 
+    DE = 1.0 + Explore*math:sqrt(NOS)/(1+N),
+    (Q/N + DE) / DE.
+% target({N,Q}, NOS, Explore) -> Q/N + Explore*math:sqrt(NOS)/(1+N).
 
