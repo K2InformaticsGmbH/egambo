@@ -77,9 +77,19 @@
         , random_idx1/1         %% one based integer random number
         , put_options/4         
         , shuffle/1
+        , signature/1
         ]).
 
--safe([sample, samples, history, norm_aliases, norm_aliases_sym]).
+-safe([sample, samples, history, norm_aliases, norm_aliases_sym, signature]).
+
+signature(Board) when is_binary(Board) -> signature(binary_to_list(Board));
+signature(Board) when is_list(Board) -> signature(lists:sort(Board),[]).
+
+signature([], Acc) -> list_to_binary(lists:reverse(Acc)); 
+signature([32|Board], Acc) -> signature(Board, Acc);
+signature([$"|Board], Acc) -> signature(Board, Acc);
+signature([C|Board], Acc) -> signature(Board, [C|Acc]).
+
 
 win_module(Width, Height, Run, false) ->
     list_to_atom(atom_to_list(?MODULE) ++ lists:flatten(io_lib:format("_win_~p_~p_~p",[Width, Height, Run])));
