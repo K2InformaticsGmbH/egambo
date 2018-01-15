@@ -44,7 +44,7 @@
 
 -record(state, {
     id :: list(),
-    network :: pid(), 
+    network :: binary(), 
     games = #{} :: map()
 }).
 
@@ -259,7 +259,7 @@ empty_pos(Board, [Col | Rest], Offset) ->
 suggest_moves_impl(Board, NN) ->
     Moves = empty_pos(Board, [35,28,21,14,7,0], 0),
     NextBoards = [apply_move(Board, M) || M <- Moves],
-    Values = ann:predict(NN, NextBoards),
+    Values = annlink:predict(NN, NextBoards),
     Suggested = lists:zip(Values, Moves),
     {_, Best} = lists:max(Suggested),
     {Suggested, Best}.
@@ -272,19 +272,22 @@ load_weights([_Name | Layers] = NetworkId) ->
             %% We use our own initialization of the weights so we have some flexibility.
             [rand:uniform() * 0.5 - 0.25 || _ <- lists:seq(1, N)];
         [#{cvalue := CVal }] ->
-            lists:flatten(imem_json:decode(CVal, [return_maps]))
+            imem_json:decode(CVal, [return_maps])
     end.
 
 -spec save(list(), pid()) -> ok.
 save(Id, NN) ->
-    Weights = ann:get_weights(NN),
+    Weights = annlink:get_weights(NN),
     imem_dal_skvh:write(system, ?NETWORK_CHANNEL, Id, imem_json:encode(Weights)),
     ok.
 
--spec init_network([integer()], [float()]) -> pid() | {error, binary()}.
+-spec init_network([integer()], [float()]) -> binary() | {error, binary()}.
 init_network([42 | Rest] = Layers, Weights) ->
     case lists:last(Rest) of
-        1 -> ann:create_neural_network(Layers, Weights, relu);
+        1 ->
+            {ok, Conn} = annlink:new_connection('192.168.1.42', 8778),
+            annlink:create_neural_network(Conn, Layers, Weights, relu),
+            Conn;
         _ -> {error, <<"Output layer must contain only one neuron">>}
     end;
 init_network(_, _) -> {error, <<"Input layer must contain 42 neuros">>}.
@@ -326,7 +329,7 @@ handle_call({suggest_moves, GameId}, _From, #state{games = Games, network = NN} 
             {reply, suggest_moves_impl(Board, NN), State}
     end;
 handle_call({evaluate_position, Pos}, _From, #state{network = NN} = State) ->
-    [[Result]] = ann:predict(NN, [Pos]),
+    [Result] = annlink:predict(NN, Pos),
     {reply, Result, State};
 handle_call(save, _From, #state{id = Id, network = NN} = State) ->
     %% TODO: It should be automatic but it depends on the state of the network...
