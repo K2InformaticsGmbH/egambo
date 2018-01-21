@@ -9,6 +9,10 @@
 -define(QL_TRAIN_OPTS, [{record_name, egTicTacQlSample}, {type, set}]).        
 -define(QL_OUTPUT_UNSAMPLED, 0.001).        % Value emitted as output for unsampled move in Export
 
+-define(UCB1_BONUS(__N, __Na, _, __Exp), 2*__Exp*math:sqrt(math:log(__N)/__Na)).   % from "A Survey of Monte Carlo Tree Search Methods"
+-define(ALFAGO_BONUS(_, __Na, __P, __Exp), __Exp*__P/(1+__Na)).         % from "Alfa Go Nature Paper"
+-define(ALFAGOZERO_BONUS(__N, __P, __Na, __Exp), __Exp*__P*sqrt(__N)/(1+__Na)).  % from "Alfa Go Zero"
+
 -record(egTicTacQlSample,   { input= <<>> :: binary()  % binstr key of normalized position (Board)
                             , nos=1       :: integer() % number of board samples (1...)
                             , nmax=1      :: integer() % number of action samples (1...) for Qmax
@@ -36,8 +40,10 @@
                 , winmod     :: egWinId()       % win function module
                 , players    :: integer()       % number of players 
                 , status     :: egBotStatus()   % current bot status (e.g. learning / playing)
-                , explore=0.999 :: float()      % rate for exploration (0..1.0)
-                , flatten=0.0 :: float()        % 
+                , explore=0.1 :: float()         % rate for exploration (0..1.0)
+                , flatten=0  :: float()         % flat peak randomisation
+                , lrate=0.5  :: float()         % learning rate
+                , discount=0.95  :: float()      % Q-discount per move
                 , table      :: atom()          % table name for Q-A-aggregation
                 }).
 
@@ -64,13 +70,17 @@
         , explore/2
         , flatten/1
         , flatten/2
-        , pick/4
+        , lrate/1
+        , lrate/2
+        , discount/1
+        , discount/2
+        , pick/5
         , play_bot_impl/11
-        , train_game/8
+        , train_game/9
         , qlearn_max/1
         ]).
 
--safe([state, stop, resume, explore, flatten, qlearn_max, pick, play_bot_impl]).
+-safe([state, stop, resume, explore, flatten, lrate, discount, qlearn_max, pick, play_bot_impl]).
 
 game_types(egambo_tictac) -> all;
 game_types(_) -> [].
@@ -115,18 +125,26 @@ terminate(_Reason, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-explore(GameTypeId) ->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {explore}).
+call(GameTypeId, Request) ->
+    gen_server:call(?BOT_GID(?MODULE, GameTypeId), Request).
 
-explore(GameTypeId, Fraction) when is_number(Fraction)->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {explore, Fraction}).
+state(GameTypeId) -> call(GameTypeId, state).
 
-flatten(GameTypeId) ->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {flatten}).
+explore(GameTypeId) -> call(GameTypeId, {explore}).
 
-flatten(GameTypeId, Fraction)  when is_number(Fraction) ->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), {flatten, Fraction}).
+explore(GameTypeId, Fraction) when is_number(Fraction) -> call(GameTypeId, {explore, Fraction}).
 
+flatten(GameTypeId) -> call(GameTypeId, {flatten}).
+
+flatten(GameTypeId, Fraction)  when is_number(Fraction) -> call(GameTypeId, {flatten, Fraction}).
+
+lrate(GameTypeId) -> call(GameTypeId, {lrate}).
+
+lrate(GameTypeId, Fraction)  when is_number(Fraction) -> call(GameTypeId, {lrate, Fraction}).
+
+discount(GameTypeId) -> call(GameTypeId, {discount}).
+
+discount(GameTypeId, Fraction)  when is_number(Fraction) -> call(GameTypeId, {discount, Fraction}).
 
 handle_cast({play_bot_req, GameId, _, [Player|_]}, #state{status=Status} = State) when Status /= playing ->
     play_bot_resp(GameId, Player, ?BOT_NOT_PLAYING),
@@ -162,9 +180,9 @@ handle_cast(Request, State) ->
 
 handle_info({notify_bot_req, _GameId, Ialiases, Space, finished, Naliases, Nscores, Moves}=_Request
             , #state{ width=Width, height=Height, gravity=Gravity, periodic=Periodic
-            , explore=Explore, table=Table} = State) ->
+            , table=Table, lrate=LearningRate, discount=Discount} = State) ->
     % ?Info("received ~p",[_Request]),
-    train_game(egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores), Table, Width, Height, Gravity, Periodic, Explore, undefined),
+    train_game(egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores), Table, Width, Height, Gravity, Periodic, LearningRate, Discount, undefined),
     {noreply, State};
 handle_info(Reqest, State) when element(1, Reqest) == notify_bot_req ->
     % ignore game notifications 
@@ -181,6 +199,14 @@ handle_call({flatten}, _From, State) ->
     {reply, State#state.flatten, State};
 handle_call({flatten, Fraction}, _From, State) ->
     {reply, ok, State#state{flatten=Fraction}};
+handle_call({lrate}, _From, State) ->
+    {reply, State#state.lrate, State};
+handle_call({lrate, Fraction}, _From, State) ->
+    {reply, ok, State#state{lrate=Fraction}};
+handle_call({discount}, _From, State) ->
+    {reply, State#state.discount, State};
+handle_call({discount, Fraction}, _From, State) ->
+    {reply, ok, State#state{discount=Fraction}};
 handle_call(state, _From, State) ->
     {reply, State, State};
 handle_call(stop, _From, State) ->
@@ -188,10 +214,10 @@ handle_call(stop, _From, State) ->
 
 
 %% Scan the moves of a game from last to first and update an aggregated Q-learning table which can also be used to train an ANN (for interpolation)
-train_game([], _Table, _Width, _Height, _Gravity, _Periodic, _Explore, _Qmax) -> ok;
-train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, Explore, Qmax) ->
-    NextQmax = train_move(Sample, Table, Width, Height, Gravity, Periodic, Explore, Qmax),
-    train_game(Samples, Table, Width, Height, Gravity, Periodic, Explore, NextQmax).
+train_game([], _Table, _Width, _Height, _Gravity, _Periodic, _LearningRate, _Discount, _Qmax) -> ok;
+train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, LearningRate, Discount, Qmax) ->
+    NextQmax = train_move(Sample, Table, Width, Height, Gravity, Periodic, LearningRate, Discount, Qmax),
+    train_game(Samples, Table, Width, Height, Gravity, Periodic, LearningRate, Discount, NextQmax).
 
 %% Format a single (already Alias-normalized) move for ann use (Board size input vector, Board size / Board Width output vector)
 %% and aggregate into the training Q table
@@ -199,83 +225,77 @@ train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, Explore, Q
 %% Qmax is the updated position quality (with respect to a win of X) for the next move (played after the current one)
 %% Qmax is calculated from all Q(Board, Moves) as seen in the perspective of the opponent
 %% The Q-learning back-propagation needs to negate this Q for the current player (neglect Joker subtleties for now)
-train_move([_Board, _Players, _Move, [Score|_], 0], _Table, _Width, _Height, _, _Periodic, _Explore, undefined) ->
+train_move([_Board, _Players, _Move, [Score|_], 0], _Table, _Width, _Height, _, _Periodic, _LearningRate, _Discount, undefined) ->
     % ?Info("ql train_move Board ~p and Move ~p for temporary X", [_Board, _Move]),
     % ?Info("ql train_move immediate reward ~p ", [Score]),
     % Do not record this pre-final board state. Decision will be taken by a one step look ahead, not from the Q-Table
-    {1,Score}; % (Qmax of final move, +1 for a win or 0 for a tie)
-train_move([Board, _Players, Move, _, MTE], Table, Width, Height, false, Periodic, Explore, Qmax) ->
+    {1, Score, Score*Score}; % (Qmax of final move, +1 for a win or 0 for a tie)
+train_move([Board, _Players, Move, _, MTE], Table, Width, Height, false, Periodic, LearningRate, Discount, Qmax) ->
     % ?Info("ql train_move Board ~p and Move ~p for temporary X", [Board, Move]),
     % ?Info("ql train_move target position qmax ~p ", [Qmax]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, false, Periodic, Board),
     % ?Info("ql train_move Input ~p and Sym ~p", [Input, Sym]),
     Olen = Width*Height,            % length of output vector (possible actions)
     OMove = egambo_tictac_sym:map_move(Width, Height, Move, Sym) + 1,   % one based index of move
-    train(Input, sample_output(Input, Olen, OMove), MTE, Table, OMove, Olen, Explore, Qmax);
-train_move([Board, _Players, Move, _, MTE], Table, Width, Height, true, Periodic, Explore, Qmax) ->
+    train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax);
+train_move([Board, _Players, Move, _, MTE], Table, Width, Height, true, Periodic, LearningRate, Discount, Qmax) ->
     % ?Info("ql train_move Board ~p and Move ~p for temporary X", [Board, Move]),
     % ?Info("ql train_move target position qmax ~p ", [Qmax]),
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, true, Periodic, Board),
     % ?Info("ql train_move Input and Sym ~p ~p", [Input, Sym]),
     Olen = Width,                   % length of output vector (possible actions)
     OMove = egambo_tictac_sym:map_move(Width, Height, Move rem Width, Sym) + 1,    % one based index to Output
-    train(Input, sample_output(Input, Olen, OMove), MTE, Table, OMove, Olen, Explore, Qmax).
+    train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax).
 
-sample_output(Input, Olen, OMove) ->
-    F = fun(I) -> 
-        Inp=lists:nth(I, Input), 
-        if 
-            I==OMove ->  {1, 0};    % intermediate move taken, no immediate reward - immediate_q(MTE>0,Score)=0
-            Inp==32 ->   {0, 0};    % alternative legal move, not taken here
-            true ->      0          % illegal move (occupied)
-        end 
-    end, 
-    Output = lists:map(F, lists:seq(1, Olen)),
-    % ?Info("ql train_move Output ~p OutputIdx ~p", [Output, OMove]),
-    Output.
-
-train(Input, Output, MTE, Table, OMove, Olen, Explore, Qmax) when MTE>0 ->
+train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax) when MTE>0 ->
     {PreviousSampleCount, AggregatedActionQualities} = case imem_meta:read(Table, list_to_binary(Input)) of
         [] ->   % TrainingRec does not exist yet. Cheat a bit, double count the first result.
-            {0, qlearn_add(Output, Output, Qmax, OMove, Olen, Explore)}; 
+            {0, qlearn_add(empty_action_qualities(Input, Olen), Qmax, OMove, Olen, LearningRate, Discount)}; 
         [#egTicTacQlSample{nos=N, aaq=OldOut}] ->
-            {N, qlearn_add(OldOut, Output, Qmax, OMove, Olen, Explore)}
+            {N, qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount)}
     end,
-    {CN,CQ} = NewQmax = qlearn_max(AggregatedActionQualities),   
-    TrainingRec=#egTicTacQlSample{input=list_to_binary(Input), nos=PreviousSampleCount+1, nmax=CN, qmax=CQ/CN, aaq=AggregatedActionQualities},
+    {SumN, SumQ, _SumQ2} = NewQmax = qlearn_max(AggregatedActionQualities),   
+    TrainingRec=#egTicTacQlSample{input=list_to_binary(Input), nos=PreviousSampleCount+1, nmax=SumN, qmax=SumQ/SumN, aaq=AggregatedActionQualities},
     imem_meta:write(Table, TrainingRec),
     NewQmax.
 
-qlearn_add(OldOut, Output, NextOut, OMove, Olen, Explore) ->
-    Alfa = Explore,
-    Gamma = -Explore,
-    [qlearn_add_one(Old, Out, Pos, NextOut, OMove, Alfa, Gamma) || {Old, Out, Pos} <- lists:zip3(OldOut, Output, lists:seq(1, Olen))].
+empty_action_qualities(Input, Olen) ->
+    {TruncInput,_} = lists:split(Olen,Input),
+    [ if 
+        Inp==32 ->   {0, 0, 0}; % {N, sum(Q), sum(Q^2)} for legal action
+        true ->      0          % illegal move (occupied)
+      end
+    || Inp <- TruncInput 
+    ].
+
+qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount) ->
+    [qlearn_add_one(Old, Pos, Qmax, OMove, LearningRate, Discount) || {Old, Pos} <- lists:zip(OldOut, lists:seq(1, Olen))].
 
 %% Add one sample to the Q-learning accumulator (single output vector position)
 %% accumulated Q:                   {AccN,AccQ}={Number of accumulated samples so far, sum of quality for this action}
 %% immediate reward:                {N,Q}       (normally {1,0} for non-final moves, {0,0} for unsampled actions)
-%% invalid moves (actions):         0 + 0 -> 0
-qlearn_add_one(0, 0, _, _, _, _, _) -> 0;                           % invalid moves 
-qlearn_add_one({AccN,AccQ}, {0,_}, _, _, _, _, _) -> {AccN,AccQ};   % unsampled actions
-qlearn_add_one({0,0}, {N,Q}, OMove, Qmax, OMove, Alfa, Gamma) ->
-    % Q-learn with immediate reward (Q=0 for TicTacChallenge)
-    {CN,CQ} = Qmax,
-    {N, Alfa*(Q + Gamma*N*CQ/CN)};
-qlearn_add_one({AccN,AccQ}, {N,Q}, OMove, Qmax, OMove, Alfa, Gamma) ->
-    % Q-learn with immediate reward (Q=0 for TicTacChallenge)
-    {CN,CQ} = Qmax,
-    AccNN = AccN+N,
+%% invalid actions:                 0 + _ -> 0
+qlearn_add_one(0, _, _, _, _, _) -> 0;                                   % invalid action 
+qlearn_add_one({0, 0, 0}, OMove, Qmax, OMove, LearningRate, Discount) -> % first sample for this action
+    {NextN, NextQ, _} = Qmax,  % Q-learn with immediate reward (Q=0 for TicTacChallenge) from next move's Qmax backpropagation
+    LearnedSumQ = -LearningRate*Discount*NextQ/NextN,
+    {1, LearnedSumQ, LearnedSumQ*LearnedSumQ};
+qlearn_add_one({AccN, AccQ, AccQ2}, OMove, Qmax, OMove, LearningRate, Discount) ->
+    {NextN, NextQ, _NextQ2} = Qmax,  % Q-learn with immediate reward (Q=0 for TicTacChallenge) from next move's Qmax backpropagation    
+    AccNN = AccN+1,
     AccQN = AccNN*AccQ/AccN,
-    {AccNN, AccQN + Alfa*(Q*AccNN/N + Gamma*CQ*AccNN/CN - AccQN)}.
+    NewAccQ = (1-LearningRate)*AccQN - LearningRate*Discount*NextQ/NextN*AccNN,
+    {AccNN, NewAccQ, AccQ2+(NewAccQ-AccQ)*(NewAccQ-AccQ)};
+qlearn_add_one(Qact, _, _, _, _, _) -> Qact.       % action is not played
 
 qlearn_max(Output) -> qlearn_max(Output,0,-1.0e100).
 
 qlearn_max([], Max, _) -> Max;  
 qlearn_max([0|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);     % invalid action
-qlearn_max([{0,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ); % unsampled action
-qlearn_max([{N,Q}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q}, Q/N); % bigger
-qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ, N>NMax -> qlearn_max(Output, {N,Q}, Q/N); % more statistics
-qlearn_max([{_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ). % smaller or equal
+qlearn_max([{0,_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ); % unsampled action
+qlearn_max([{N,Q,Q2}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q,Q2}, Q/N); % bigger
+qlearn_max([{N,Q,Q2}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ, N>NMax -> qlearn_max(Output, {N,Q,Q2}, Q/N); % more statistics
+qlearn_max([{_,_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ). % smaller or equal
 
 -spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
 play_bot_resp(GameId, Player, BotMove) -> 
@@ -313,10 +333,6 @@ stop(GameTypeId) ->
     supervisor:delete_child(egambo_bot_sup, ?BOT_ID(?MODULE, GameTypeId)).
 
 
-state(GameTypeId) ->
-    gen_server:call(?BOT_GID(?MODULE, GameTypeId), state). 
-
-
 -spec play_bot_impl(binary(), integer(), integer(), integer(), boolean(), boolean(), [egAlias()], [egAlias()], float(), float(), atom()) -> egBotMove() | {error, atom()}.
 play_bot_impl(Board, Width, Height, _Run, Gravity, Periodic, IAliases, NAliases, Explore, Flatten, Table) ->
     % ?Info("play_bot_impl Board, NAliases ~p ~p", [Board, NAliases]),
@@ -325,47 +341,32 @@ play_bot_impl(Board, Width, Height, _Run, Gravity, Periodic, IAliases, NAliases,
     {Input, Sym} = egambo_tictac_sym:norm(Width, Height, Gravity, Periodic, ABoard), 
     % ?Info("play_bot_impl Input (normalized board) and symmetry used ~p ~p", [Input, Sym]),
     {NOS, AccActionQuality} = case imem_meta:read(Table, list_to_binary(Input)) of
-        [] ->   {0, new_output(Input, Width, Height, Gravity)};
-        [#egTicTacQlSample{nos=Nos, aaq=Aaq}] -> {Nos,Aaq}
+        [] when Gravity==false ->                   {0, empty_action_qualities(Input, Width*Height)};
+        [] ->                                       {0, empty_action_qualities(Input, Width)};
+        [#egTicTacQlSample{nos=Nos, aaq=Aaq}] ->    {Nos,Aaq}
     end,
     % ?Info("play_bot_impl ActionQuality ~p",[ActionQuality]),    
-    NormIdx = pick(NOS, AccActionQuality, Explore, Flatten),      % 0-based index for predicted move
+    NormIdx = pick(NOS, AccActionQuality, 1.0, Explore, Flatten),      % 0-based index for predicted move
     NewIdx = egambo_tictac_sym:unmap_move(Width, Height, NormIdx, Sym),    
     % ?Info("play_bot_impl NormIdx, NewIdx (output picked) ~p ~p", [NormIdx, NewIdx]),
     {ok, Idx, NewBoard} = egambo_tictac:put(Gravity, Board, Width, NewIdx, hd(NAliases)),
     % ?Info("play_bot_impl Idx, NewBoard ~p ~p", [Idx, binary_to_list(NewBoard)]),
     {ok, Idx, NewBoard}.
 
-new_output(Input, Width, Height, false) ->
-    F = fun(I) -> 
-        Inp=lists:nth(I, Input), 
-        if 
-            Inp==32 ->   {0, 0};      % alternative legal move
-            true ->      0            % illegal move (occupied)
-        end 
-    end, 
-    lists:map(F, lists:seq(1, Width*Height));
-new_output(Input, Width, _Height, true) ->
-    F = fun(I) -> 
-        Inp=lists:nth(I, Input), 
-        if 
-            Inp==32 ->   {0, 0};      % alternative legal move
-            true ->      0            % illegal move (occupied)
-        end 
-    end, 
-    lists:map(F, lists:seq(1, Width)).
-
-pick(NOS, AccActionQuality, Explore, 0) ->
-    AL = [{target(A, NOS, Explore), rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
+pick(NOS, AccActionQuality, Prior, Explore, 0) ->
+    AL = [{ucb1_target(A, NOS, Prior, Explore), rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
     element(3, lists:last(lists:sort(AL)));
-pick(NOS, AccActionQuality, Explore, Flatten) ->
-    AL = [{target(A, NOS, Explore) + Flatten* rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
+pick(NOS, AccActionQuality, Prior, Explore, Flatten) ->
+    AL = [{ucb1_target(A, NOS, Prior, Explore) + Flatten*rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
     element(2, lists:last(lists:sort(AL))).
 
-target(0, _, _) -> -100; 
-target({0,0}, _, _) -> 100; 
-target({N,Q}, NOS, Explore) -> 
-    DE = 1.0 + Explore*math:sqrt(NOS)/(1+N),
-    (Q/N + DE) / DE.
-% target({N,Q}, NOS, Explore) -> Q/N + Explore*math:sqrt(NOS)/(1+N).
+ucb1_target(0, _, _, _) -> -100; 
+ucb1_target({0, 0, 0}, _, _, _) -> 100; 
+ucb1_target({N, Q, _Q2}, NOS, _Prior, Explore) -> 
+    Q/N + ?UCB1_BONUS(NOS, N, _Prior, Explore).
+
+% ucb1_target({N,Q}, NOS, Prior, Explore) -> 
+%     DE = 1.0 + Explore*math:sqrt(NOS)/(1+N),
+%     (Q/N + DE) / DE.
+% ucb1_target({N,Q}, NOS, Explore) -> Q/N + Explore*math:sqrt(NOS)/(1+N).
 
