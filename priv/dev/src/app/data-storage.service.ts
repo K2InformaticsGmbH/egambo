@@ -20,7 +20,7 @@ export class DataStorageService {
         return this.http.post(urlPrefix + 'list_games', {type: type})
             .map((res) => {
                 console.log(res);
-                return res.json(); // Here we probably should map to game-list-item
+                return res.json().resp; // Here we probably should map to game-list-item
             });
     }
 
@@ -28,7 +28,7 @@ export class DataStorageService {
         return this.http.post(urlPrefix + 'load_game', {id: id})
         .map((res) => {
             console.log(res);
-            return res.json();
+            return res.json().resp;
         });
     }
 }

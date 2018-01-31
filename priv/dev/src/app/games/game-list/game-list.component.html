@@ -1,3 +1,22 @@
-<p>
-  list of games!
+<p *ngIf="games.length > 0">
+  List of games:
 </p>
+<p *ngIf="games.length === 0">
+  No games found
+</p>
+<div class="row">
+  <div class="col-xs-12">
+      <!-- TODO: Should we use a grid here instead ? -->
+      <a
+        *ngFor="let game of games"
+        style="cursor: pointer;"
+        [routerLink]="[game.id]"
+        routerLinkActive="active"
+        class="list-group-item clearfix">
+      <div class="pull-left">
+        <h4 class="list-group-item-heading">{{ game.id }}</h4>
+        <p class="list-group-item-text">{{ game.nmoves }} moves</p>
+      </div>
+    </a>
+  </div>
+</div>

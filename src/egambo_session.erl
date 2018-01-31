@@ -59,10 +59,9 @@ handle_call(_Req, _From, State) ->
 handle_cast({<<"get_game_types">>, {}, ReplyFun}, #state{playerId = PlayerId} = State) ->
     ReplyFun(get_game_types(PlayerId)),
     {noreply, State};
-handle_cast({<<"list_games">>, {Type}, ReplyFun}, #state{playerId = PlayerId} = State) ->
-    ReplyFun(list_games(PlayerId, Type)),
-    {noreply, State};
 handle_cast({<<"login">>, {User, Password}, ReplyFun}, #state{playerId = undefined, sessionId = SessionId, notifyFun = NotifyFun} = State) ->
+    %% TODO: Delete secos as we don't need them...
+    ?Info("Login attempt..."),
     case authenticate(User, Password, SessionId) of
         {error, invalid} ->
             ReplyFun(<<"Invalid account credentials">>),
@@ -116,8 +115,16 @@ handle_cast({<<"change_credentials">>, {User, Password, NewPassword}, ReplyFun},
             ReplyFun(<<"Error checking password strength">>),
             {noreply, State}
     end;
+handle_cast({<<"logout">>, _Args, ReplyFun}, #state{playerId = PlayerId} = State) ->
+    ?Info("Terminating session for player ~p", [PlayerId]),
+    ReplyFun(<<"ok">>),
+    {stop, normal, State};
 handle_cast({_Action, _Args, ReplyFun}, #state{playerId = undefined} = State) ->
     ReplyFun(<<"User not logged in">>),
+    {noreply, State};
+handle_cast({<<"list_games">>, {Type}, ReplyFun}, #state{playerId = PlayerId} = State) ->
+    ?Info("Asking for the list of games of ~p", [{Type, PlayerId}]),
+    ReplyFun(list_games(PlayerId, Type)),
     {noreply, State};
 handle_cast({<<"new_game">>, {GameType, Opponent}, ReplyFun}, #state{skey = SKey} = State) when is_binary(Opponent) ->
     case get_userid(SKey, Opponent) of
@@ -137,6 +144,31 @@ handle_cast({<<"new_game">>, {GameType, OpponentId}, ReplyFun}, #state{playerId 
 handle_cast({<<"new_game">>, {GameType}, ReplyFun}, #state{playerId = PlayerId} = State) ->
     Result = egambo_game:start(GameType, PlayerId),
     unwrap_error_new_game(ReplyFun, Result),
+    {noreply, State};
+handle_cast({<<"load_game">>, {GameId}, ReplyFun}, #state{} = State) ->
+    case egambo_game:read_game(GameId) of
+        {error, Error} -> ReplyFun(Error);
+        #egGame{gid=GId, tid=Type, status=Status, board=Board, moves=MovesAlias} = Game ->
+            % Ids need to be sent as string otherwise javascript
+            % precision problems might arise.
+            Id = integer_to_binary(GId),
+            Players = [get_username(PlayerId) || PlayerId <- Game#egGame.nmovers],
+            % As 88 is always first we just take list of moves and reverse the order
+            % to make first move, the first element on the list.
+            Moves = lists:reverse([Pos || {_ , Pos} <- MovesAlias]),
+            %% We need to read the type to know the width of the board...
+            #egGameType{params = #{ width := Width }} = egambo_game:read_type(Type),
+            Height = size(Board) div Width,
+            ReplyFun(#{
+                id => Id,
+                players => Players,
+                status => Status,
+                board => Board,
+                moves => Moves,
+                width => Width,
+                height => Height
+            })
+    end,
     {noreply, State};
 handle_cast({<<"accept">>, {GameId}, ReplyFun}, #state{playerId = PlayerId} = State) ->
     Result = egambo_game:accept(GameId, PlayerId),
@@ -173,6 +205,7 @@ extract_args(<<"get_game_types">>, _Args) -> {};
 extract_args(<<"list_games">>, #{<<"type">> := Type}) -> {Type};
 extract_args(<<"login">>, #{<<"user">> := User, <<"password">> := Password}) when
             is_binary(User), is_binary(Password) -> {User, Password};
+extract_args(<<"logout">>, _Args) -> {};
 extract_args(<<"change_credentials">>, #{<<"user">> := User, <<"password">> := Password,
             <<"new_password">> := NewPassword}) when is_binary(User),
             is_binary(Password), is_binary(NewPassword) -> {User, Password, NewPassword};
@@ -183,6 +216,8 @@ extract_args(<<"accept">>, #{<<"game_id">> := GameId}) when is_integer(GameId) -
 extract_args(<<"cancel">>, #{<<"game_id">> := GameId}) when is_integer(GameId) -> {GameId};
 extract_args(<<"play">>, #{<<"game_id">> := GameId, <<"position">> := Pos}) when
             is_integer(GameId), is_integer(Pos) -> {GameId, Pos};
+extract_args(<<"load_game">>, #{<<"id">> := GameId}) when
+            is_binary(GameId) -> {binary_to_integer(GameId)};
 extract_args(_Action, _ReqArgs) -> invalid.
 
 -spec unwrap_error_new_game(fun(), {error, term()} | integer()) -> ok.
@@ -234,14 +269,14 @@ get_userid(SKey, User) when is_integer(SKey), is_binary(User) ->
 
 -spec get_game_types(ddEntityId()) -> list().
 get_game_types(undefined) ->
-    %% TODO: This needs revisit, should the egambo_game module the one
+    %% TODO: This needs revisit, should the egambo_game module be the one
     %%       knowing the records ? maybe egambo_dal ?...
     Types = imem_meta:read(egGameType),
     [#{id => Id, name => Name, difficulty => Level, description => Info} ||
         #egGameType{tid = Id, tname = Name, level = Level, info = Info} <- Types];
 get_game_types(PlayerId) ->
-    ?Info("Missing implementation for authenticatd users, playerid: ~p", [PlayerId]),
-    #{error => <<"Not implemented">>}.
+    ?Info("Missing count of games for authenticatd users, playerid: ~p", [PlayerId]),
+    get_game_types(undefined).
 
 -spec list_games(ddEntityId(), binary()) -> list().
 list_games(PlayerId, Type) ->
@@ -249,9 +284,16 @@ list_games(PlayerId, Type) ->
         {#egGame{players = [PlayerId, '_'], tid = Type, _ = '_'}, [], ['$_']},
         {#egGame{players = ['_', PlayerId], tid = Type, _ = '_'}, [], ['$_']}
     ]),
-    [#{id => Id, nmoves => length(Moves)} || #egGame{gid = Id, moves = Moves} <- Games].
+    % Ids need to be sent as string otherwise javascript precision problems might arise.
+    [#{id => integer_to_binary(Id), nmoves => length(Moves)} ||
+        #egGame{gid = Id, moves = Moves} <- Games].
 
-
+-spec get_username(ddEntityId) -> binary() | {error, not_found}.
+get_username(UserId) ->
+    case imem_meta:read(ddAccount, UserId) of
+        [#ddAccount{name = Username} | _] -> Username;
+        _ -> {error, not_found}
+    end.
 
 % egambo_game:create(<<"tic_tac_toe">>, 2).
 % egambo_game:create(<<"tic_tac_toe">>, 1, 2).

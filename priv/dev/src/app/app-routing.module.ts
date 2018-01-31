@@ -9,6 +9,7 @@ import { GameListComponent } from "app/games/game-list/game-list.component";
 import { WrapperComponent } from "app/games/wrapper/wrapper.component";
 import { GameComponent } from "app/games/game/game.component";
 import { GameListResolve } from "app/games/game-list/game-list.resolve";
+import { GameResolve } from "app/games/game/game.resolve";
 
 const appRoutes: Routes = [
     {path: '', redirectTo: 'welcome', pathMatch: 'full'},
@@ -19,7 +20,7 @@ const appRoutes: Routes = [
         {path: '', component: TypeListComponent, resolve: {types: GameTypesResolve}},
         {path: ':type', component: WrapperComponent, children: [
             {path: '', component: GameListComponent, resolve: {games: GameListResolve}},
-            {path: ':id', component: GameComponent}
+            {path: ':id', component: GameComponent, resolve: {game: GameResolve}}
         ]}
     ]}
 ];

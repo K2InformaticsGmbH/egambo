@@ -1,3 +1,4 @@
 <p>
-  game works!
+  Game # {{ game.id }} Moves: {{ game.moves | json}} Players: {{ game.players }}
 </p>
+<app-board [board]="game.board"></app-board>

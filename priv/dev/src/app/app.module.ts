@@ -19,6 +19,7 @@ import { DataStorageService } from 'app/data-storage.service';
 import { GameComponent } from './games/game/game.component';
 import { WrapperComponent } from './games/wrapper/wrapper.component';
 import { GameListResolve } from 'app/games/game-list/game-list.resolve';
+import { GameResolve } from 'app/games/game/game.resolve';
 
 @NgModule({
     declarations: [
@@ -44,7 +45,8 @@ import { GameListResolve } from 'app/games/game-list/game-list.resolve';
         AuthService,
         DataStorageService,
         GameTypesResolve,
-        GameListResolve
+        GameListResolve,
+        GameResolve
     ],
     bootstrap: [AppComponent]
 })
