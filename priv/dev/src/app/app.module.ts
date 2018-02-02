@@ -20,6 +20,7 @@ import { GameComponent } from './games/game/game.component';
 import { WrapperComponent } from './games/wrapper/wrapper.component';
 import { GameListResolve } from 'app/games/game-list/game-list.resolve';
 import { GameResolve } from 'app/games/game/game.resolve';
+import { CellComponent } from './games/board/cell/cell.component';
 
 @NgModule({
     declarations: [
@@ -33,7 +34,8 @@ import { GameResolve } from 'app/games/game/game.resolve';
         TypeListComponent,
         GameListComponent,
         GameComponent,
-        WrapperComponent
+        WrapperComponent,
+        CellComponent
     ],
     imports: [
         BrowserModule,

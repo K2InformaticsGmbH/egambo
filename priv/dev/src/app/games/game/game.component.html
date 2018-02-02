@@ -1,4 +1,4 @@
 <p>
   Game # {{ game.id }} Moves: {{ game.moves | json}} Players: {{ game.players }}
 </p>
-<app-board [board]="game.board"></app-board>
+<app-board [board]="game.board" [id]="game.id"></app-board>

@@ -1,4 +1,4 @@
-<p>
-    board works!
-</p>
 {{board | json}}
+<svg attr.viewBox="0 0 {{boardSize}} {{boardSize}}" preserveAspectRatio="xMidYMax meet">
+    <svg:g *ngFor="let bc of boardCells; let i=index" app-cell [cell]="bc.cell" attr.transform="translate({{ bc.x }}, {{ bc.y }})" (click)="handleClick(i)" />
+</svg>

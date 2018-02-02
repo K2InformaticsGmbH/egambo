@@ -214,6 +214,8 @@ extract_args(<<"new_game">>, #{<<"type">> := GameType, <<"opponent">> := Op}) wh
 extract_args(<<"new_game">>, #{<<"type">> := GameType}) when is_binary(GameType) -> {GameType};
 extract_args(<<"accept">>, #{<<"game_id">> := GameId}) when is_integer(GameId) -> {GameId};
 extract_args(<<"cancel">>, #{<<"game_id">> := GameId}) when is_integer(GameId) -> {GameId};
+extract_args(<<"play">>, #{<<"game_id">> := GameId} = Args) when is_binary(GameId) -> 
+    extract_args(<<"play">>, Args#{<<"game_id">> := binary_to_integer(GameId)});
 extract_args(<<"play">>, #{<<"game_id">> := GameId, <<"position">> := Pos}) when
             is_integer(GameId), is_integer(Pos) -> {GameId, Pos};
 extract_args(<<"load_game">>, #{<<"id">> := GameId}) when

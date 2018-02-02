@@ -8,25 +8,13 @@ const urlPrefix = 'api/';
 export class DataStorageService {
     constructor(private http: Http) {}
 
-    getGameTypes() {
-        return this.http.post(urlPrefix + 'get_game_types', {})
-            .map((res) => {
-                console.log(res);
-                return res.json().resp;
-            });
-    }
+    getGameTypes() { return this.post('get_game_types', {}); }
+    listGames(type: string) { return this.post('list_games', {type: type}); }
+    loadGame(id: string) { return this.post('load_game', {id: id}); }
+    play(id: string, pos: number) { return this.post('play', {game_id: id, position: pos}); }
 
-    listGames(type: string) {
-        return this.http.post(urlPrefix + 'list_games', {type: type})
-            .map((res) => {
-                console.log(res);
-                return res.json().resp; // Here we probably should map to game-list-item
-            });
-    }
-
-    loadGame(id: string) {
-        return this.http.post(urlPrefix + 'load_game', {id: id})
-        .map((res) => {
+    private post(url, args) {
+        return this.http.post(urlPrefix + url, args).map((res) => {
             console.log(res);
             return res.json().resp;
         });
