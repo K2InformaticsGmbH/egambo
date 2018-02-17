@@ -12,6 +12,9 @@
 -define(ALFAGO_BONUS(_, __Na, __P, __Exp), __Exp*__P/(1+__Na)).                     % from "Alfa Go Nature Paper"
 -define(ALFAGOZERO_BONUS(__N, __P, __Na, __Exp), __Exp*__P*sqrt(__N)/(1+__Na)).     % from "Alfa Go Zero"
 
+-define(QL_AQ_INVALID, 0).      % Quality of invalid action
+-define(QL_AQ_INIT, {0,0,0}).   % {Samples for this action, SN, SQ} where Quality = SQ/SN 
+
 -record(egTicTacQlSample,   { input= <<>> :: binary()  % binstr key of normalized position (Board)
                             , nos=1       :: integer() % number of board samples (1...)
                             , nmax=1      :: integer() % number of action samples (1...) for Qmax
@@ -177,10 +180,11 @@ handle_cast(Request, State) ->
     ?Info("Unsolicited handle_cast in ~p : ~p",[?MODULE, Request]),
     {noreply, State}.
 
-handle_info({notify_bot_req, _GameId, Ialiases, Space, finished, Naliases, Nscores, Moves}=_Request
+handle_info({notify_bot_req, _, _, _, _, _, _, _}, #state{lrate=0} = State) ->
+    {noreply, State};
+handle_info({notify_bot_req, _GameId, Ialiases, Space, finished, Naliases, Nscores, Moves}
             , #state{ width=Width, height=Height, gravity=Gravity, periodic=Periodic
             , table=Table, lrate=LearningRate, discount=Discount} = State) ->
-    % ?Info("received ~p",[_Request]),
     train_game(egambo_tictac:samples(Space, Ialiases, Moves, Naliases, Nscores), Table, Width, Height, Gravity, Periodic, LearningRate, Discount, undefined),
     {noreply, State};
 handle_info(Reqest, State) when element(1, Reqest) == notify_bot_req ->
@@ -261,8 +265,8 @@ train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax) when MTE>0 -
 empty_action_qualities(Input, Olen) ->
     {TruncInput,_} = lists:split(Olen,Input),
     [ if 
-        Inp==32 ->   {0, 0};    % {N, sum(Q)} for legal action
-        true ->      0          % illegal move (occupied)
+        Inp==32 ->   ?QL_AQ_INIT;   % {N, sum(N), sum(Q)} for legal action
+        true ->      0              % illegal move (occupied)
       end
     || Inp <- TruncInput 
     ].
@@ -275,29 +279,28 @@ qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount) ->
 %% accumulated Q:                   {AccN,AccQ}={Number of accumulated samples so far, sum of quality for this action}
 %% immediate reward:                {N,Q}       (normally {1,0} for non-final moves, {0,0} for unsampled actions)
 %% invalid actions:                 0 + _ -> 0
-qlearn_add_one(0, _, _, _, _, _) -> 0;                                      % invalid action 
-qlearn_add_one(Qact, Pos, _, OMove, _, _) when Pos/=OMove -> Qact;          % unplayed action
-qlearn_add_one(_, _, {NextN, NextQ}, _, LR, Disc) when LR=:=1,is_integer(Disc) -> 
-    {NextN+Disc, -NextQ};                             % inverse integer LR=:=1 -> 100% backpropagation
-qlearn_add_one({AccN, AccQ}, _, {NextN, NextQ}, _, LR, Disc) when is_integer(LR),is_integer(Disc) -> 
-    {(LR-1)*AccN+NextN+Disc, (LR-1)*AccQ-NextQ};    % inverse integer LR=:=2 -> 50% backpropagation
-qlearn_add_one({0, 0}, _, {NextN, NextQ}, _, LR, Disc) -> % first sample for this action
-    {NextN, -LR*Disc*NextQ};
-qlearn_add_one({AccN, AccQ}, _, {NextN, NextQ}, _, LR, Disc) ->
+qlearn_add_one(?QL_AQ_INVALID, _, _, _, _, _) -> ?QL_AQ_INVALID;    % invalid action 
+qlearn_add_one(Qact, Pos, _, OMove, _, _) when Pos/=OMove -> Qact;  % unplayed action
+qlearn_add_one({N, _, _}, _, {_, NextN, NextQ}, _, LR, Disc) when LR=:=1,is_integer(Disc) ->   % ?QL_AQ_INIT Types
+    {N+1, NextN+Disc, -NextQ};                                      % inverse integer LR=:=1 -> 100% backpropagation
+qlearn_add_one({N, AccN, AccQ}, _, {_, NextN, NextQ}, _, LR, Disc) when is_integer(LR),is_integer(Disc) -> 
+    {N+1, (LR-1)*AccN+NextN+Disc, (LR-1)*AccQ-NextQ};               % inverse integer e.g. LR=:=2 -> 50% backpropagation
+qlearn_add_one(?QL_AQ_INIT, _, {_, NextN, NextQ}, _, LR, Disc) ->   % first sample for this action
+    {1, NextN, -LR*Disc*NextQ};
+qlearn_add_one({N, AccN, AccQ}, _, {_, NextN, NextQ}, _, LR, Disc) ->   % ?QL_AQ_INIT Types
     AccNN = AccN+1,
     AccQN = AccNN*AccQ/AccN,
     NewAccQ = (1-LR)*AccQN - LR*Disc*NextQ/NextN*AccNN,     % LR=:=0.5 -> 50% backpropagation
-    {AccNN, NewAccQ}.
+    {N+1, AccNN, NewAccQ}.
 
 qlearn_max(Output) -> qlearn_max(Output,0,-1.0e200).
 
 qlearn_max([], Max, _) -> Max;  
-qlearn_max([0|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);         % invalid action
-qlearn_max([{0,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);     % unsampled action
-qlearn_max([{0,_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);   % unsampled action
-qlearn_max([{N,Q}|Output], _Max, MaxQ) when Q/N>MaxQ -> qlearn_max(Output, {N,Q}, Q/N);                 % bigger
-qlearn_max([{N,Q}|Output], {NMax,_}, MaxQ) when Q/N==MaxQ, N>NMax -> qlearn_max(Output, {N,Q}, Q/N);    % more statistics
-qlearn_max([_|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ).         % smaller or equal
+qlearn_max([?QL_AQ_INVALID|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);    % invalid action
+qlearn_max([{0,_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);           % unsampled action ?QL_AQ_INIT Types
+qlearn_max([{N,SN,SQ}|Output], _Max, MaxQ) when SQ/SN>MaxQ -> qlearn_max(Output, {N,SN,SQ}, SQ/SN);       % bigger
+qlearn_max([{N,SN,SQ}|Output], {_,NMax,_}, MaxQ) when SQ/SN==MaxQ, SN>NMax -> qlearn_max(Output, {N,SN,SQ}, SQ/SN);    % more statistics
+qlearn_max([_|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ).                 % smaller or equal
 
 -spec play_bot_resp(egGameId(), egAlias(), egBotMove() ) -> ok.
 play_bot_resp(GameId, Player, BotMove) -> 
@@ -362,10 +365,10 @@ pick(NOS, AccActionQuality, Prior, Explore, Flatten) ->
     AL = [{ucb1_target(A, NOS, Prior, Explore) + Flatten*rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
     element(2, lists:last(lists:sort(AL))).
 
-ucb1_target(0, _, _, _) -> -100; 
-ucb1_target({0, 0}, _, _, _) -> 100; 
-ucb1_target({N, Q}, NOS, _Prior, Explore) -> 
-    Q/N + ?UCB1_BONUS(NOS, N, _Prior, Explore).
+ucb1_target(?QL_AQ_INVALID, _, _, _) -> -100; 
+ucb1_target(?QL_AQ_INIT, _, _, _) -> 100; 
+ucb1_target({N,SN,SQ}, NOS, _Prior, Explore) ->    % ?QL_AQ_INIT Type
+    SQ/SN + ?UCB1_BONUS(NOS, N, _Prior, Explore).
 
 % ucb1_target({N,Q}, NOS, Prior, Explore) -> 
 %     DE = 1.0 + Explore*math:sqrt(NOS)/(1+N),
