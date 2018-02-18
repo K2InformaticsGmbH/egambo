@@ -9,7 +9,7 @@
                             ,{purge_delay, 430000}      %% 430000 = 5 Days - 2000 sec
                             ]).
 
--define(MAX_BATCH_COUNT, 100000).
+-define(MAX_BATCH_COUNT, 1000000).
 -define(CREATE_BATCH_COUNT, 100).
 -define(CREATE_BATCH_BUSY_WAIT, 1000).
 -define(CREATE_BATCH_ALWAYS_WAIT, 500).
