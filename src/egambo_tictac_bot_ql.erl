@@ -12,6 +12,7 @@
 -define(ALFAGO_BONUS(_, __Na, __P, __Exp), __Exp*__P/(1+__Na)).                     % from "Alfa Go Nature Paper"
 -define(ALFAGOZERO_BONUS(__N, __P, __Na, __Exp), __Exp*__P*sqrt(__N)/(1+__Na)).     % from "Alfa Go Zero"
 
+-type egTicTacQlActionQuality() :: {integer(),integer(),integer()} | 0.
 -define(QL_AQ_INVALID, 0).      % Quality of invalid action
 -define(QL_AQ_INIT, {0,0,0}).   % {Samples for this action, SN, SQ} where Quality = SQ/SN 
 
@@ -228,11 +229,12 @@ train_game([Sample|Samples], Table, Width, Height, Gravity, Periodic, LearningRa
 %% Qmax is the updated position quality (with respect to a win of X) for the next move (played after the current one)
 %% Qmax is calculated from all Q(Board, Moves) as seen in the perspective of the opponent
 %% The Q-learning back-propagation needs to negate this Q for the current player (neglect Joker subtleties for now)
+-spec train_move(list(), atom(), integer(), integer(), boolean(), boolean(), number(), number(), egTicTacQlActionQuality()) -> egTicTacQlActionQuality().
 train_move([_Board, _Players, _Move, [Score|_], 0], _Table, _Width, _Height, _, _Periodic, _LearningRate, _Discount, undefined) ->
     % ?Info("ql train_move Board ~p and Move ~p for temporary X", [_Board, _Move]),
     % ?Info("ql train_move immediate reward ~p ", [Score]),
     % Do not record this pre-final board state. Decision will be taken by a one step look ahead, not from the Q-Table
-    {1, Score}; % (Qmax of final move, +1 for a win or 0 for a tie)
+    {1, 1, Score}; % (Qmax of final move, +1 for a win or 0 for a tie) % ?QL_AQ_INIT Type
 train_move([Board, _Players, Move, _, MTE], Table, Width, Height, false, Periodic, LearningRate, Discount, Qmax) ->
     % ?Info("ql train_move Board ~p and Move ~p for temporary X", [Board, Move]),
     % ?Info("ql train_move target position qmax ~p ", [Qmax]),
@@ -250,6 +252,7 @@ train_move([Board, _Players, Move, _, MTE], Table, Width, Height, true, Periodic
     OMove = egambo_tictac_sym:map_move(Width, Height, Move rem Width, Sym) + 1,    % one based index to Output
     train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax).
 
+-spec train(list(), integer(), atom(), integer(), integer(), number(), number(), egTicTacQlActionQuality()) -> egTicTacQlActionQuality().
 train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax) when MTE>0 ->
     {PreviousSampleCount, AggregatedActionQualities} = case imem_meta:read(Table, list_to_binary(Input)) of
         [] ->   % TrainingRec does not exist yet. Cheat a bit, double count the first result.
@@ -257,11 +260,12 @@ train(Input, MTE, Table, OMove, Olen, LearningRate, Discount, Qmax) when MTE>0 -
         [#egTicTacQlSample{nos=N, aaq=OldOut}] ->
             {N, qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount)}
     end,
-    {SumN, SumQ} = NewQmax = qlearn_max(AggregatedActionQualities),   
+    {_, SumN, SumQ} = NewQmax = qlearn_max(AggregatedActionQualities),   % ?QL_AQ_INIT Type
     TrainingRec=#egTicTacQlSample{input=list_to_binary(Input), nos=PreviousSampleCount+1, nmax=SumN, qmax=SumQ/SumN, aaq=AggregatedActionQualities},
     imem_meta:write(Table, TrainingRec),
     NewQmax.
 
+-spec empty_action_qualities(list(), integer()) -> [egTicTacQlActionQuality()].
 empty_action_qualities(Input, Olen) ->
     {TruncInput,_} = lists:split(Olen,Input),
     [ if 
@@ -271,6 +275,7 @@ empty_action_qualities(Input, Olen) ->
     || Inp <- TruncInput 
     ].
 
+-spec qlearn_add([egTicTacQlActionQuality()], egTicTacQlActionQuality(), integer(), integer(), number(), number()) -> [egTicTacQlActionQuality()].
 qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount) ->
     [qlearn_add_one(Old, Pos, Qmax, OMove, LearningRate, Discount) || {Old, Pos} <- lists:zip(OldOut, lists:seq(1, Olen))].
 
@@ -279,6 +284,7 @@ qlearn_add(OldOut, Qmax, OMove, Olen, LearningRate, Discount) ->
 %% accumulated Q:                   {AccN,AccQ}={Number of accumulated samples so far, sum of quality for this action}
 %% immediate reward:                {N,Q}       (normally {1,0} for non-final moves, {0,0} for unsampled actions)
 %% invalid actions:                 0 + _ -> 0
+-spec qlearn_add_one(egTicTacQlActionQuality(), integer(), egTicTacQlActionQuality(), integer(), number(), number()) -> egTicTacQlActionQuality().
 qlearn_add_one(?QL_AQ_INVALID, _, _, _, _, _) -> ?QL_AQ_INVALID;    % invalid action 
 qlearn_add_one(Qact, Pos, _, OMove, _, _) when Pos/=OMove -> Qact;  % unplayed action
 qlearn_add_one({N, _, _}, _, {_, NextN, NextQ}, _, LR, Disc) when LR=:=1,is_integer(Disc) ->   % ?QL_AQ_INIT Types
@@ -293,8 +299,10 @@ qlearn_add_one({N, AccN, AccQ}, _, {_, NextN, NextQ}, _, LR, Disc) ->   % ?QL_AQ
     NewAccQ = (1-LR)*AccQN - LR*Disc*NextQ/NextN*AccNN,     % LR=:=0.5 -> 50% backpropagation
     {N+1, AccNN, NewAccQ}.
 
+-spec qlearn_max([egTicTacQlActionQuality()]) -> egTicTacQlActionQuality().
 qlearn_max(Output) -> qlearn_max(Output,0,-1.0e200).
 
+-spec qlearn_max([egTicTacQlActionQuality()], egTicTacQlActionQuality(), number()) -> egTicTacQlActionQuality().
 qlearn_max([], Max, _) -> Max;  
 qlearn_max([?QL_AQ_INVALID|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);    % invalid action
 qlearn_max([{0,_,_}|Output], Max, MaxQ) -> qlearn_max(Output, Max, MaxQ);           % unsampled action ?QL_AQ_INIT Types
@@ -365,6 +373,7 @@ pick(NOS, AccActionQuality, Prior, Explore, Flatten) ->
     AL = [{ucb1_target(A, NOS, Prior, Explore) + Flatten*rand:uniform(), I} || {A,I} <- lists:zip(AccActionQuality, lists:seq(0, length(AccActionQuality)-1))],
     element(2, lists:last(lists:sort(AL))).
 
+-spec ucb1_target(egTicTacQlActionQuality(), integer(), number(), number()) -> number().
 ucb1_target(?QL_AQ_INVALID, _, _, _) -> -100; 
 ucb1_target(?QL_AQ_INIT, _, _, _) -> 100; 
 ucb1_target({N,SN,SQ}, NOS, _Prior, Explore) ->    % ?QL_AQ_INIT Type
