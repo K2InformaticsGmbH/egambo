@@ -6,7 +6,11 @@
 %-behavior(egambo_gen_player).   % callbacks provided by (bot) players
 
 -define(QL_TRAIN, "egTicTacQl_").           % Q-table name prefix (egGameTypeId to be appended)
--define(QL_TRAIN_OPTS, [{record_name, egTicTacQlSample}, {type, set}]).        
+-define(QL_TRAIN_OPTS, [
+    {record_name, egTicTacQlSample},
+    {type, set},
+    {scope,local},
+    {local_content,true}]).
 
 -define(UCB1_BONUS(__N, __Na, _, __Exp), 2*__Exp*math:sqrt(math:log(__N)/__Na)).    % from "A Survey of Monte Carlo Tree Search Methods"
 -define(ALFAGO_BONUS(_, __Na, __P, __Exp), __Exp*__P/(1+__Na)).                     % from "Alfa Go Nature Paper"
@@ -92,7 +96,7 @@ game_types(_) -> [].
 % egambo_tictac_bot_ql:train_game(Samples, Table, 3, 3, false, false, 0.9, undefined).
 
 init([GameTypeId]) ->
-    Table = list_to_atom(?QL_TRAIN ++ binary_to_list(GameTypeId)),
+    Table = list_to_atom(?QL_TRAIN ++ binary_to_list(GameTypeId) ++ "_nt@"),
     imem_meta:init_create_table(Table, {record_info(fields, egTicTacQlSample), ?egTicTacQlSample, #egTicTacQlSample{}}, ?QL_TRAIN_OPTS, system),  
     Result = try
         #egGameType{engine=Engine, players=Players, params=Params} = egambo_game:read_type(GameTypeId),
