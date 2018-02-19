@@ -3,7 +3,7 @@ $DDerlScript = "/_build/prod/lib/dderl/post_release.ps1"
 & ((Split-Path $MyInvocation.InvocationName) + $DDerlScript) -app egambo
 
 Write-Host "===> egambo post_release" -foregroundcolor "magenta"
-$egamboPriv = "/_build/prod/rel/egambo/lib/egambo-*/priv"
+$egamboPriv = "/_build/prod/rel/egambo/lib/egambo-*/priv/dev"
 cd ((Split-Path $MyInvocation.InvocationName) + $egamboPriv)
 If (Test-Path node_modules) {
     Remove-Item node_modules -Force -Recurse

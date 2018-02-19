@@ -3,7 +3,7 @@
 
 echo `pwd`
 
-cd _build/prod/rel/egambo/lib/egambo-*/priv
+cd _build/prod/rel/egambo/lib/egambo-*/priv/dev
 rm -rf node_modules
 echo "===> dir 'node_modules' deleted"
 
@@ -14,5 +14,5 @@ echo "===> npm run build"
 npm run build
 
 cd ..
-echo "===> dirs 'node_modules', 'bower_components', 'test', 'vendor' deleted"
-rm -rf node_modules bower_components test vendor
+echo "===> dirs 'node_modules' deleted"
+rm -rf node_modules
