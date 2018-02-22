@@ -4,10 +4,10 @@
 node_host=127.0.0.1
 cluster_host=127.0.0.1
 
-app_name=sbsgui
-node_name=sbsgui
-cluster_name=sbsgui
-cookie=sbsgui
+app_name=egambo
+node_name=egambo
+cluster_name=egambo
+cookie=egambo
 
 dderlip=$node_host
 dderlport=8449
