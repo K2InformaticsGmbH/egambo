@@ -1,13 +1,20 @@
 #!/bin/bash
 
 # Change below to use specific hosts
-app_name=egambo
-node_name=egambo
 node_host=127.0.0.1
-cluster_name=egambo
 cluster_host=127.0.0.1
-cookie=egambo
 
+app_name=sbsgui
+node_name=sbsgui
+cluster_name=sbsgui
+cookie=sbsgui
+
+dderlip=$node_host
+dderlport=8449
+imemip=$node_host
+imemport=1236
+imemtype=ram
+imemschema=$app_name
 
 cmd=$0
 argscount=$#
@@ -36,13 +43,14 @@ if [ "$1" == "gui" ] ||
    [ "$1" == "remove" ] ||
    [ "$1" == "start" ] ||
    [ "$1" == "stop" ] ||
-   [ "$1" == "list" ] ||
-   [ "$1" == "attach" ]; then
-    ./deps/dderl/service_generic.sh $1 $app_name $node_name $node_host $cluster_name $cluster_host $cookie
+   [ "$1" == "list" ]; then
+    ./_build/default/lib/dderl/service_generic.sh $1 $app_name $node_name $node_host $cluster_name $cluster_host $cookie $dderlip $dderlport $imemip $imemport $imemtype $imemschema $config
+elif [ "$1" == "attach" ]; then
+    ./_build/default/lib/dderl/service_generic.sh $1 $node_name $node_host $cookie
 elif [ "$1" == "escript" ]; then
-    ./deps/dderl/service_generic.sh $1 $2 $node_name $node_host $cookie
+    ./_build/default/lib/dderl/service_generic.sh $1 $2 $node_name $node_host $cookie
 elif [ "$1" == "check" ]; then
-    ./deps/dderl/service_generic.sh $1 $node_name $node_host $cookie
+    ./_build/default/lib/dderl/service_generic.sh $1 $node_name $node_host $cookie
 else
     usage $cmd
     echo ---------------
