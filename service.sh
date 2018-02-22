@@ -15,7 +15,7 @@ imemip=$node_host
 imemport=1236
 imemtype=ram
 imemschema=$app_name
-config=$PWD/sbsgui.config
+config=$PWD/egambo.config
 
 cmd=$0
 argscount=$#
