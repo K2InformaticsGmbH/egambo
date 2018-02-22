@@ -15,6 +15,7 @@ imemip=$node_host
 imemport=1236
 imemtype=ram
 imemschema=$app_name
+config=$PWD/sbsgui.config
 
 cmd=$0
 argscount=$#
