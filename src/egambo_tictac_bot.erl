@@ -162,20 +162,22 @@ state(GameTypeId) ->
 -spec play_bot_random(binary(), integer(), integer(), integer(), boolean(), boolean(), egWinId(), [egAlias()], Options::[egGameMove()]) -> egBotMove() | {error, atom()}.
 play_bot_random(Board, Width, _Height, _Run, Gravity, _Periodic, _WinMod, [Player|_], Options) when length(Options)==size(Board) ->
     egambo_tictac:put(Gravity, Board, Width, lists:nth(rand:uniform(length(Options)), Options), Player);
-play_bot_random(Board, Width, Height, _Run, Gravity, Periodic, _WinMod, [Player|Others], Options) ->
+play_bot_random(Board, Width, Height, _Run, false, Periodic, _WinMod, [Player|Others], Options) ->
     Idx = case rand:uniform(3) of
         1 -> % truly random
-            lists:nth(rand:uniform(length(Options)), Options);
+            hd(Options);                % options are already shuffled
         2 -> % maximum connectivity = minimum availability connectivity
-            ObNC = opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, hd(Others)),
+            ObNC = opts_by_neighbour_count(Board, Width, Height, false, Periodic, Options, hd(Others)),
             % ?Info("ObNC others ~p",[ObNC]),
             element(2, lists:last(ObNC));
         3 -> % maximum own connectivity
-            ObNC = opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player),
+            ObNC = opts_by_neighbour_count(Board, Width, Height, false, Periodic, Options, Player),
             % ?Info("ObNC Player ~p",[ObNC]),
             element(2, lists:last(ObNC))
     end,
-    egambo_tictac:put(Gravity, Board, Width, Idx, Player).
+    egambo_tictac:put(false, Board, Width, Idx, Player);
+play_bot_random(Board, Width, _Height, _Run, true, _Periodic, _WinMod, [Player|_Others], Options) ->
+    egambo_tictac:put(true, Board, Width, hd(Options), Player).  % truly random
 
 opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player) ->
     opts_by_neighbour_count(Board, Width, Height, Gravity, Periodic, Options, Player,[]).
