@@ -7,7 +7,8 @@
     stop/0,
     get_routes/0,
     start_tpcjson_listener/0,
-    priv_dir/0
+    priv_dir/0,
+    log_table/0
 ]).
 
 start() ->
@@ -47,3 +48,8 @@ start_tpcjson_listener() ->
     {ok, _ListenerPid} = ranch:start_listener(?MODULE, ?MAXACCEPTORS, ranch_ssl,
         TransOpts, etcpjson_srv, [egambo_tcp_handler]),
     ok.
+
+-spec log_table() -> atom().
+log_table() ->
+    ?GET_CONFIG(egamboLogTable,[],'egamboLog_86400@',
+                "Name of the table where the egambo logs will be stored").

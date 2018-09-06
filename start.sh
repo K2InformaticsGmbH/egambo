@@ -11,7 +11,7 @@ if [ "$#" -ne 5 ]; then
     nid=1
     cid=2
     port=1236
-    dderlport=8449
+    dderlport=8441
     etcpjsonport=8559
 fi
 
@@ -67,7 +67,10 @@ sasl_opts=$sasl_opts"  sasl_error_logger false"
 etcpjson_opts="-etcpjson"
 etcpjson_opts=$etcpjson_opts" interface \"0.0.0.0\" port $etcpjsonport"
 
-start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts $etcpjson_opts"
+# lager config
+config="egambo.config"
+
+start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts $etcpjson_opts -config $config"
 
 # egambo start options
 echo "------------------------------------------"
@@ -85,5 +88,5 @@ echo "ETCPJSON  : $etcpjson_opts"
 echo "------------------------------------------"
 
 # Starting egambo
-echo $exename $start_opts -s egambo
-$exename $start_opts -s egambo
+echo $exename $start_opts -s imem
+$exename $start_opts -s imem
