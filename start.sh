@@ -11,7 +11,7 @@ if [ "$#" -ne 5 ]; then
     nid=1
     cid=2
     port=1236
-    dderlport=8441
+    dderlport=8449
     etcpjsonport=8559
 fi
 
@@ -88,5 +88,5 @@ echo "ETCPJSON  : $etcpjson_opts"
 echo "------------------------------------------"
 
 # Starting egambo
-echo $exename $start_opts -s imem
-$exename $start_opts -s imem
+echo $exename $start_opts -s egambo
+$exename $start_opts -s egambo
