@@ -67,7 +67,10 @@ sasl_opts=$sasl_opts"  sasl_error_logger false"
 etcpjson_opts="-etcpjson"
 etcpjson_opts=$etcpjson_opts" interface \"0.0.0.0\" port $etcpjsonport"
 
-start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts $etcpjson_opts"
+# lager config
+config="egambo.config"
+
+start_opts="$paths $cookie $node_name $dist_opts $kernel_opts $imem_opts $dderl_opts $sasl_opts $etcpjson_opts -config $config"
 
 # egambo start options
 echo "------------------------------------------"
