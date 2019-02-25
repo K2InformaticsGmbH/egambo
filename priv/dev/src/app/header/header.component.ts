@@ -8,14 +8,14 @@ import { AuthService } from 'app/auth/auth.service';
 })
 export class HeaderComponent implements OnInit {
 
-    constructor(private authService: AuthService) { }
+    constructor(public authService: AuthService) { }
 
     ngOnInit() {
     }
 
     logout() {
         this.authService.logout().subscribe((resp) => {
-            console.log("resp");
+            console.log('resp');
         });
     }
 

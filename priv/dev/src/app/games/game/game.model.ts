@@ -1,4 +1,4 @@
-import { Board } from "app/games/board/board.model";
+import { Board } from 'app/games/board/board.model';
 
 export class Game {
     public id: string;

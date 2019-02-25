@@ -23,7 +23,7 @@ export class BoardComponent implements OnInit {
     }
 
     ngOnInit() {
-        let colors = {
+        const colors = {
             ' ': 'snow',
             'X': 'red',
             'O': 'blue'
@@ -34,13 +34,13 @@ export class BoardComponent implements OnInit {
         }
         this.cellSize = Math.trunc(this.boardSize / longestSide);
 
-        let radius = Math.trunc((this.cellSize-this.padding) / 2);
-        let offset = this.cellSize / 2; // Shift the cells as first one starts at [0,0].
+        const radius = Math.trunc((this.cellSize - this.padding) / 2);
+        const offset = this.cellSize / 2; // Shift the cells as first one starts at [0,0].
         let i = 0;
-        for(let token of this.board.representation) {
-            let occupied = token !== " ";
-            let col = i % this.board.width;
-            let row = Math.floor(i / this.board.width);
+        for(const token of this.board.representation) {
+            const occupied = token !== ' ';
+            const col = i % this.board.width;
+            const row = Math.floor(i / this.board.width);
             this.boardCells.push({
                 x: offset + col * this.cellSize,
                 y: offset + row * this.cellSize,
@@ -51,8 +51,8 @@ export class BoardComponent implements OnInit {
     }
 
     handleClick(index: number) {
-        console.log("the click", index);
-        let cell: Cell = this.boardCells[index].cell
+        console.log('the click', index);
+        const cell: Cell = this.boardCells[index].cell
         // If the cell is occupied we do nothing.
         if(cell.occupied) {
             return;
@@ -60,9 +60,9 @@ export class BoardComponent implements OnInit {
 
         // Otherwise we play.
         this.dataStorage.play(this.id, index).subscribe((response) => {
-            console.log("The response from playing :O", response);
+            console.log('The response from playing :O', response);
             cell.occupied = true;
-            cell.color = "green";
+            cell.color = 'green';
         });
     }
 }

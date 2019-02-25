@@ -1,8 +1,8 @@
-import { Resolve, ActivatedRouteSnapshot, RouterStateSnapshot } from "@angular/router";
-import { Observable } from "rxjs/Observable";
-import { GameType } from "app/games/type-list/game-type.model";
-import { DataStorageService } from "app/data-storage.service";
-import { Injectable } from "@angular/core";
+import { Resolve, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+import { Observable } from 'rxjs/Observable';
+import { GameType } from 'app/games/type-list/game-type.model';
+import { DataStorageService } from 'app/data-storage.service';
+import { Injectable } from '@angular/core';
 
 @Injectable()
 export class GameTypesResolve implements Resolve<GameType[]> {

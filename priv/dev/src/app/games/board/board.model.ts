@@ -1,4 +1,4 @@
-import { Cell } from "app/games/board/cell/cell.model";
+import { Cell } from 'app/games/board/cell/cell.model';
 
 export class Board {
     public width: number;
