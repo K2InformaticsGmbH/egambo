@@ -45,8 +45,8 @@
     "typescript": "3.2.4"
   },
   "scripts": {
-    "build": "npm run lint && ng build --aot",
-    "build-prod": "npm run lint && ng build --prod",
+    "build": "yarn lint && ng build --aot",
+    "build-prod": "yarn lint && ng build --prod",
     "watch": "ng build --aot --watch",
     "test": "ng test",
     "lint": "ng lint",
