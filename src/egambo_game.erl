@@ -572,7 +572,6 @@ init(_) ->
         insert_default(?DEFAULT_ROLES),
         insert_default(?DEFAULT_CMDS),
         insert_default(?DEFAULT_VIEWS),
-        imem_snap:suspend_snap_loop(),
         process_flag(trap_exit, true),
         {ok,#state{}}
     catch
